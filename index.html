@@ -54,7 +54,7 @@
     .event{border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;background:#1a0c10}
     .event h3{margin:0 0 4px;font-size:17px;color:var(--gold2)}
     .muted{color:var(--muted);font-size:12px;line-height:1.45}
-    .nav{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#16090c;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);padding:6px 2px calc(8px + var(--safe))}
+    .nav{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#16090c;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(6,1fr);padding:6px 2px calc(8px + var(--safe))}
     .nav button{background:none;border:0;color:var(--muted);font-size:10px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0}
     .nav button.on{color:var(--gold2)}
     .nav .ico{font-size:16px}
@@ -181,12 +181,30 @@
       <div id="vendorList"></div>
     </div>
   </section>
+
+  <section id="tab-inv" class="hidden">
+    <div class="card">
+      <div class="split">
+        <h2>庫存</h2>
+        <button class="btn gold" onclick="openInvForm()">＋ 入庫</button>
+      </div>
+      <p class="hint">記冰箱／冷凍／乾貨現有量。出採購單時會先扣庫存，只買不夠的；也可設安全庫存（par），低於就補。</p>
+      <div class="search"><input id="invSearch" placeholder="搜尋庫存…" oninput="renderInv()"></div>
+      <div class="chips" id="invChips"></div>
+      <div id="invList"></div>
+      <div class="btn-row">
+        <button class="btn" onclick="consumeForEvent()">依本場菜單扣庫存</button>
+        <button class="btn" onclick="receiveBought()">把已勾選採購入庫</button>
+      </div>
+    </div>
+  </section>
 </main>
 
 <nav class="nav">
   <button class="on" data-tab="cal" onclick="switchTab('cal')"><span class="ico">▦</span>行程</button>
   <button data-tab="menu" onclick="switchTab('menu')"><span class="ico">🍽</span>菜單</button>
   <button data-tab="shop" onclick="switchTab('shop')"><span class="ico">☰</span>採購</button>
+  <button data-tab="inv" onclick="switchTab('inv')"><span class="ico">▣</span>庫存</button>
   <button data-tab="cogs" onclick="switchTab('cogs')"><span class="ico">◎</span>成本</button>
   <button data-tab="vendors" onclick="switchTab('vendors')"><span class="ico">⌂</span>商家</button>
 </nav>
@@ -371,29 +389,41 @@ const DEFAULT_RECIPES = [
     ]}
 ];
 
-const KEY = "rs-mise-v2";
+const DEFAULT_INV = [
+  { id:"i1", n:"無鹽奶油", qty:1, u:"lb", loc:"冰箱", par:0.5, exp:"", vendor:"Whole Foods JC" },
+  { id:"i2", n:"雞蛋", qty:12, u:"pc", loc:"冰箱", par:6, exp:"", vendor:"Whole Foods JC" },
+  { id:"i3", n:"檸檬", qty:4, u:"pc", loc:"冰箱", par:2, exp:"", vendor:"Whole Foods JC" },
+  { id:"i4", n:"蒜頭", qty:8, u:"pc", loc:"乾貨", par:4, exp:"", vendor:"99 Ranch / 亞洲超市" },
+  { id:"i5", n:"香蔥 chives", qty:1, u:"bunch", loc:"冰箱", par:1, exp:"", vendor:"Whole Foods JC" },
+  { id:"i6", n:"椰奶", qty:13.5, u:"oz", loc:"乾貨", par:13, exp:"", vendor:"99 Ranch / 亞洲超市" }
+];
+
+const KEY = "rs-mise-v3";
 let state = {
   recipes: JSON.parse(JSON.stringify(DEFAULT_RECIPES)),
   events: [
     { id:"e-demo", title:"6 人品嚐會", date:"2026-10-05", guests:6, where:"客人府上", price:175, notes:"5 道套餐", recipeIds:["r1","r2","r3","r4","r5","r6"], bought:{} }
   ],
+  inventory: JSON.parse(JSON.stringify(DEFAULT_INV)),
   activeEvent: "e-demo",
   cogsPct: 30,
   totalRev: "",
   vFilter: "全部",
+  invFilter: "全部",
   guests: 6,
   price: 175
 };
 
 function load() {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(KEY) || localStorage.getItem("rs-mise-v2");
     if (raw) state = { ...state, ...JSON.parse(raw) };
   } catch(e) {}
   if (!state.events.length) {
     state.events = [{ id:"e-demo", title:"6 人品嚐會", date:"2026-10-05", guests:6, where:"客人府上", price:175, notes:"", recipeIds:["r1","r2","r3","r4","r5","r6"], bought:{} }];
     state.activeEvent = "e-demo";
   }
+  if (!state.inventory) state.inventory = JSON.parse(JSON.stringify(DEFAULT_INV));
 }
 function save() {
   localStorage.setItem(KEY, JSON.stringify(state));
@@ -412,15 +442,53 @@ function fmtDate(iso) {
 }
 
 function switchTab(id) {
-  ["cal","menu","shop","cogs","vendors"].forEach(t=>{
+  ["cal","menu","shop","inv","cogs","vendors"].forEach(t=>{
     $("#tab-"+t).classList.toggle("hidden", t!==id);
     $$(`.nav button[data-tab="${t}"]`).forEach(b=>b.classList.toggle("on", t===id));
   });
   if (id==="cal") renderCal();
   if (id==="menu") renderRecipes();
   if (id==="shop") renderShop();
+  if (id==="inv") renderInv();
   if (id==="cogs") renderCogs();
   if (id==="vendors") renderVendors();
+}
+
+function toBase(qty, u) {
+  u = normUnit(u);
+  if (u==="lb") return { q:num(qty)*16, b:"oz" };
+  if (u==="oz") return { q:num(qty), b:"oz" };
+  if (u==="g") return { q:num(qty)/28.3495, b:"oz" };
+  if (u==="kg") return { q:num(qty)*35.274, b:"oz" };
+  if (u==="ml") return { q:num(qty), b:"ml" };
+  if (u==="l") return { q:num(qty)*1000, b:"ml" };
+  return { q:num(qty), b:u||"pc" };
+}
+function fromBase(q, b, prefer) {
+  const p = normUnit(prefer||b);
+  if (b==="oz" && (p==="lb" || q>=12)) return { qty:q/16, u:"lb" };
+  if (b==="oz") return { qty:q, u:"oz" };
+  return { qty:q, u:p||b };
+}
+function normName(s){ return String(s||"").toLowerCase().replace(/[（）()]/g," ").replace(/\s+/g," ").trim(); }
+function invMatch(name) {
+  const n = normName(name);
+  const list = state.inventory||[];
+  return list.find(i => {
+    const a = normName(i.n);
+    return a===n || a.includes(n) || n.includes(a);
+  });
+}
+function haveQty(name, unit) {
+  const row = invMatch(name);
+  if (!row) return 0;
+  const have = toBase(row.qty, row.u);
+  const needU = toBase(1, unit);
+  if (have.b !== needU.b) {
+    if (normUnit(row.u)===normUnit(unit) || isCount(name, unit) && isCount(row.n, row.u)) return num(row.qty);
+    return 0;
+  }
+  return have.q;
 }
 
 function renderCal() {
@@ -706,10 +774,33 @@ function buildShopItems(e) {
       if (!it.dishes.includes(r.name)) it.dishes.push(r.name);
     });
   });
+  (state.inventory||[]).forEach(row => {
+    if (num(row.par)>0 && num(row.qty)+1e-9 < num(row.par)) {
+      const vendor = routeVendor(row.n, row.vendor);
+      const key = (row.n+"|"+vendor).toLowerCase();
+      const gap = num(row.par) - num(row.qty);
+      if (!map.has(key)) map.set(key, { n:row.n, vendor, raw:0, u:row.u, dishes:["安全庫存"] });
+      map.get(key).parGap = gap;
+    }
+  });
   return [...map.values()].map(it => {
-    const rnd = shopRound(it.n, it.raw, it.u);
-    return { ...it, ...rnd, label: fmtQty(rnd.qty, rnd.unit) };
-  }).sort((a,b)=>a.vendor.localeCompare(b.vendor) || a.n.localeCompare(b.n));
+    const have = haveQty(it.n, it.u);
+    const needB = toBase(it.raw, it.u);
+    let buyRaw = it.raw;
+    if (have>0 && needB.q>0) {
+      const remainB = Math.max(0, needB.q - have);
+      const back = fromBase(remainB, needB.b, it.u);
+      buyRaw = back.qty;
+    }
+    if (it.parGap) buyRaw = Math.max(buyRaw, it.parGap);
+    const covered = buyRaw <= 1e-9;
+    const rnd = covered ? { qty:0, unit: it.u } : shopRound(it.n, buyRaw, it.u);
+    return {
+      ...it, ...rnd, covered,
+      have,
+      label: covered ? "庫存夠" : fmtQty(rnd.qty, rnd.unit)
+    };
+  }).sort((a,b)=> Number(a.covered)-Number(b.covered) || a.vendor.localeCompare(b.vendor) || a.n.localeCompare(b.n));
 }
 
 function buildShop() {
@@ -728,7 +819,7 @@ function renderShop() {
   const items = buildShopItems(e);
   const stores = {};
   items.forEach(i => (stores[i.vendor] ||= []).push(i));
-  $("#shopHint").textContent = `${fmtDate(e.date)}｜${e.guests} 位｜${(e.recipeIds||[]).length} 道菜｜數量已進位，計數類只出現整數。`;
+  $("#shopHint").textContent = `${fmtDate(e.date)}｜${e.guests} 位｜${(e.recipeIds||[]).length} 道菜｜已扣庫存，只列出要買的。`;
   if (!items.length) {
     $("#shopList").innerHTML = `<div class="empty">這場還沒套菜單。回行程打開活動，套用菜品或貼上食譜。</div>`;
     return;
@@ -756,7 +847,7 @@ function renderShop() {
           <input class="check" type="checkbox" ${done?"checked":""} onchange="toggleBought('${e.id}','${escAttr(key)}',this.checked)">
           <div style="${done?"opacity:.45;text-decoration:line-through":""}">
             <b>${esc(i.n)}</b>
-            <div class="vendor-name">${esc(i.dishes.map(d=>d.split("·")[0].trim()).join("、"))}</div>
+            <div class="vendor-name">${esc(i.dishes.map(d=>d.split("·")[0].trim()).join("、"))}${i.have? " · 庫存已抵一部分":""}${i.covered?" · 不用買":""}</div>
           </div>
           <div class="qty-badge">${esc(i.label)}</div>
         </div>`;
@@ -849,10 +940,147 @@ function closeModal(){ $("#modal").classList.add("hidden"); }
   });
 });
 
+function renderInv() {
+  const q = ($("#invSearch") && $("#invSearch").value || "").toLowerCase();
+  const f = state.invFilter || "全部";
+  const locs = ["全部","冰箱","冷凍","乾貨","低於安全庫存"];
+  if ($("#invChips")) {
+    $("#invChips").innerHTML = locs.map(c=>`<button class="chip ${f===c?"on":""}" onclick="state.invFilter='${c}';renderInv()">${c}</button>`).join("");
+  }
+  const rows = (state.inventory||[]).filter(i=>{
+    if (q && !`${i.n} ${i.loc} ${i.vendor}`.toLowerCase().includes(q)) return false;
+    if (f==="低於安全庫存") return num(i.par)>0 && num(i.qty)<num(i.par);
+    if (f!=="全部" && i.loc!==f) return false;
+    return true;
+  });
+  if (!rows.length) {
+    $("#invList").innerHTML = `<div class="empty">沒有庫存。點右上角入庫。</div>`;
+    return;
+  }
+  $("#invList").innerHTML = rows.map(i=>{
+    const low = num(i.par)>0 && num(i.qty)+1e-9 < num(i.par);
+    return `<article class="recipe">
+      <div class="split">
+        <div>
+          <h3 style="margin:0 0 4px;font-size:16px;color:var(--gold2)">${esc(i.n)}</h3>
+          <div class="muted">${esc(i.loc||"")} · ${esc(i.vendor||"")}${i.exp?" · 效期 "+esc(i.exp):""}${low?" · 低於安全庫存":""}</div>
+        </div>
+        <div class="qty-badge">${i.qty} ${esc(i.u)}</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" onclick="adjustInv('${i.id}',-1)">－</button>
+        <button class="btn" onclick="adjustInv('${i.id}',1)">＋</button>
+        <button class="btn" onclick="openInvForm('${i.id}')">編輯</button>
+        <button class="danger" onclick="delInv('${i.id}')">刪</button>
+      </div>
+    </article>`;
+  }).join("");
+}
+function openInvForm(id) {
+  const row = id ? (state.inventory||[]).find(x=>x.id===id) : { id:uid(), n:"", qty:1, u:"pc", loc:"冰箱", par:0, exp:"", vendor:"" };
+  window.draftI = JSON.parse(JSON.stringify(row));
+  $("#sheet").innerHTML = `
+    <h2 class="serif" style="margin:0 0 10px;color:var(--gold2)">${id?"編輯庫存":"入庫"}</h2>
+    <div class="field"><label>品名</label><input id="in" value="${escAttr(row.n)}"></div>
+    <div class="row" style="margin-top:8px">
+      <div class="field"><label>數量</label><input id="iq" type="number" step="0.01" value="${row.qty}"></div>
+      <div class="field"><label>單位</label>
+        <select id="iu">${["pc","oz","lb","bunch","g"].map(u=>`<option ${row.u===u?"selected":""}>${u}</option>`).join("")}</select>
+      </div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="field"><label>位置</label>
+        <select id="il">${["冰箱","冷凍","乾貨"].map(l=>`<option ${row.loc===l?"selected":""}>${l}</option>`).join("")}</select>
+      </div>
+      <div class="field"><label>安全庫存 par</label><input id="ip" type="number" step="0.01" value="${row.par||0}"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="field"><label>效期</label><input id="ie" type="date" value="${escAttr(row.exp||"")}"></div>
+      <div class="field"><label>常用商家</label><input id="iv" list="storelist" value="${escAttr(row.vendor||"")}"></div>
+    </div>
+    <datalist id="storelist">${Object.keys(STORES).map(s=>`<option value="${escAttr(s)}">`).join("")}</datalist>
+    <div class="btn-row">
+      <button class="btn gold" onclick="commitInv('${row.id}')">儲存</button>
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+    </div>
+  `;
+  $("#modal").classList.remove("hidden");
+}
+function commitInv(id) {
+  const obj = {
+    id, n: $("#in").value.trim() || "未命名",
+    qty: num($("#iq").value), u: $("#iu").value,
+    loc: $("#il").value, par: num($("#ip").value),
+    exp: $("#ie").value, vendor: $("#iv").value.trim()
+  };
+  const i = (state.inventory||[]).findIndex(x=>x.id===id);
+  if (i>=0) state.inventory[i] = obj;
+  else { state.inventory = state.inventory||[]; state.inventory.push(obj); }
+  save(); closeModal(); renderInv();
+}
+function adjustInv(id, dir) {
+  const row = (state.inventory||[]).find(x=>x.id===id);
+  if (!row) return;
+  const step = isCount(row.n, row.u) || normUnit(row.u)==="pc" || normUnit(row.u)==="bunch" ? 1 : (normUnit(row.u)==="lb"?0.5:1);
+  row.qty = Math.max(0, +(num(row.qty)+dir*step).toFixed(2));
+  save(); renderInv();
+}
+function delInv(id) {
+  if (!confirm("刪除此庫存？")) return;
+  state.inventory = (state.inventory||[]).filter(x=>x.id!==id);
+  save(); renderInv();
+}
+function consumeForEvent() {
+  const e = activeEv();
+  if (!e) return alert("先選一場活動");
+  const items = [];
+  (e.recipeIds||[]).forEach(rid => {
+    const r = recById(rid); if (!r) return;
+    (r.ings||[]).forEach(i => items.push({ n:i.n, raw:num(i.per)*(e.guests||1), u:i.u }));
+  });
+  if (!items.length) return alert("這場沒有菜單");
+  if (!confirm("依目前活動菜單從庫存扣除用量？")) return;
+  items.forEach(it => {
+    const row = invMatch(it.n);
+    if (!row) return;
+    const have = toBase(row.qty, row.u);
+    const need = toBase(it.raw, it.u);
+    if (have.b !== need.b) {
+      if (isCount(it.n, it.u) && isCount(row.n, row.u)) row.qty = Math.max(0, num(row.qty)-it.raw);
+      return;
+    }
+    const left = fromBase(Math.max(0, have.q-need.q), have.b, row.u);
+    row.qty = +(left.qty).toFixed(2);
+  });
+  save(); renderInv(); alert("已扣庫存。不夠的請看出採購單。");
+}
+function receiveBought() {
+  const e = activeEv();
+  if (!e) return;
+  const items = buildShopItems(e).filter(i => !i.covered && e.bought && e.bought[(i.n+"|"+i.vendor).toLowerCase()]);
+  if (!items.length) return alert("採購單裡沒有已勾選的品項。先去採購勾「買到了」。");
+  items.forEach(it => {
+    let row = invMatch(it.n);
+    const add = it.rawUnit ? shopRound(it.n, it.qty, it.rawUnit) : it;
+    if (!row) {
+      row = { id:uid(), n:it.n, qty:0, u:it.rawUnit||it.u||"pc", loc:"冰箱", par:0, exp:"", vendor:it.vendor };
+      state.inventory.push(row);
+    }
+    const have = toBase(row.qty, row.u);
+    const inc = toBase(it.qty, it.rawUnit||it.u);
+    if (have.b===inc.b) {
+      const sum = fromBase(have.q+inc.q, have.b, row.u);
+      row.qty = +sum.qty.toFixed(2);
+    } else row.qty = +(num(row.qty)+num(it.qty)).toFixed(2);
+  });
+  save(); switchTab("inv"); alert("已入庫。");
+}
+
 load();
 renderCal();
 renderRecipes();
 renderShop();
+renderInv();
 renderCogs();
 renderVendors();
 </script>
