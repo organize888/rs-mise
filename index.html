@@ -120,10 +120,13 @@
         <h2>菜單／食譜庫</h2>
         <button class="btn gold" onclick="openRecipeForm()">＋ 新食譜</button>
       </div>
-      <p class="hint">用量以「每位客人」為準。丟整套菜單：貼上文字即可解析。</p>
+      <p class="hint">上傳食譜照片、截圖或文字檔，自動掃出食材與用量。也可拍照或直接貼文字。</p>
       <div class="btn-row" style="margin-top:0">
-        <button class="btn" onclick="openPaste()">把整套菜單貼進來</button>
+        <button class="btn gold" onclick="pickRecipeFile('image')">上傳／拍照食譜</button>
+        <button class="btn" onclick="pickRecipeFile('text')">上傳文字檔</button>
+        <button class="btn" onclick="openPaste()">貼文字</button>
       </div>
+      <input id="recipeFile" type="file" accept="image/*,text/plain,.txt,.md,.csv" capture="environment" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none" onchange="onRecipeFile(this)">
       <div id="recipeList"></div>
     </div>
   </section>
@@ -533,7 +536,8 @@ function openEvent(id) {
     ${recs.map(r=>`<div class="recipe"><b>${esc(r.name)}</b><div class="muted">${(r.ings||[]).map(i=>i.n).join(" · ")}</div></div>`).join("") || `<div class="empty">還沒套食譜</div>`}
     <div class="btn-row">
       <button class="btn" onclick="openAttach('${e.id}')">套用／增減菜品</button>
-      <button class="btn" onclick="openPaste('${e.id}')">貼上食譜文字</button>
+      <button class="btn" onclick="scanTargetEvent='${e.id}';pickRecipeFile('image')">上傳這場的食譜</button>
+      <button class="btn" onclick="openPaste('${e.id}')">貼文字</button>
     </div>
     <p class="hint" style="margin-top:12px">採購會去 ${stores.length} 個地方：${stores.map(esc).join("、")||"—"}</p>
     <div class="btn-row">
@@ -692,72 +696,234 @@ function deleteRecipe(id) {
   save(); closeModal(); renderRecipes();
 }
 
-function openPaste(eid) {
+let scanTargetEvent = "";
+
+function pickRecipeFile(kind, eid) {
+  if (eid!==undefined) scanTargetEvent = eid||"";
+  const inp = $("#recipeFile");
+  inp.accept = kind==="text" ? "text/plain,.txt,.md,.csv,.rtf" : "image/*,.heic,.heif";
+  if (kind==="image") inp.setAttribute("capture","environment");
+  else inp.removeAttribute("capture");
+  inp.value = "";
+  inp.click();
+}
+function onRecipeFile(inp) {
+  const file = inp.files && inp.files[0];
+  if (!file) return;
+  const isImg = /^image\//.test(file.type) || /\.(heic|heif|jpg|jpeg|png|webp|gif)$/i.test(file.name);
+  if (isImg) scanRecipeImage(file, scanTargetEvent);
+  else {
+    const reader = new FileReader();
+    reader.onload = () => showScanReview(String(reader.result||""), scanTargetEvent);
+    reader.readAsText(file);
+  }
+}
+
+function loadTesseract() {
+  return new Promise((resolve, reject) => {
+    if (window.Tesseract) return resolve(window.Tesseract);
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    s.onload = () => resolve(window.Tesseract);
+    s.onerror = () => reject(new Error("OCR 套件載入失敗"));
+    document.head.appendChild(s);
+  });
+}
+function resizeForOcr(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const max = 1600;
+      let w = img.width, h = img.height;
+      if (w > max) { h = Math.round(h * max / w); w = max; }
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      c.getContext("2d").drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      c.toBlob(b => resolve(b || file), "image/jpeg", 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+async function scanRecipeImage(file, eid) {
   $("#sheet").innerHTML = `
-    <h2 class="serif" style="margin:0 0 8px;color:var(--gold2)">貼上整套菜單</h2>
-    <p class="hint">一行一個食材，可用：<br>菜名以「# 冷盤 Hamachi」或「冷盤：」開頭<br>食材例：<code>Hamachi 2 oz</code>　<code>蘋果 1 顆</code>　<code>short rib 8 oz /人</code><br>不寫／人就當作「每位客人」的量。</p>
-    <textarea id="pasteBox" placeholder="# Amuse&#10;鵪鶉蛋 1 pc&#10;甜蝦 0.5 oz&#10;&#10;# 冷盤&#10;Hamachi 1.75 oz&#10;白蘿蔔 0.2 顆"></textarea>
+    <h2 class="serif" style="margin:0 0 8px;color:var(--gold2)">掃描食譜</h2>
+    <p class="hint" id="scanStat">準備辨識「${esc(file.name)}」…第一次會下載語系檔，約需數十秒。</p>
+    <div class="bar"><i id="scanBar" style="width:8%"></i></div>
+    <img id="scanPrev" alt="" style="width:100%;margin-top:12px;border-radius:12px;border:1px solid var(--line);max-height:220px;object-fit:cover">
+    <div class="btn-row"><button class="btn ghost" onclick="closeModal()">取消</button></div>
+  `;
+  $("#modal").classList.remove("hidden");
+  const prevUrl = URL.createObjectURL(file);
+  const prev = $("#scanPrev"); if (prev) prev.src = prevUrl;
+  try {
+    const T = await loadTesseract();
+    const blob = await resizeForOcr(file);
+    const worker = await T.createWorker("eng+chi_tra", 1, {
+      logger: m => {
+        const st = $("#scanStat"); const bar = $("#scanBar");
+        if (!st) return;
+        const p = Math.round((m.progress||0)*100);
+        if (m.status==="loading tesseract core") st.textContent = "載入辨識引擎…";
+        else if (m.status==="loading language traineddata") st.textContent = "下載中英辨識檔…";
+        else if (m.status==="initializing api") st.textContent = "初始化…";
+        else if (m.status==="recognizing text") st.textContent = "正在讀食材 " + p + "%";
+        else st.textContent = m.status || "處理中…";
+        if (bar) bar.style.width = Math.max(8, p) + "%";
+      }
+    });
+    const { data } = await worker.recognize(blob);
+    await worker.terminate();
+    const text = (data && data.text || "").trim();
+    if (!text) {
+      $("#scanStat").textContent = "沒讀到字。請拍清楚、光線夠，或改貼文字。";
+      return;
+    }
+    showScanReview(text, eid);
+  } catch (err) {
+    const st = $("#scanStat");
+    if (st) st.textContent = "辨識失敗：" + (err.message||err) + "。改貼文字也可以。";
+  }
+}
+
+function fracToNum(s) {
+  s = String(s||"").trim().replace(/½/g,"1/2").replace(/⅓/g,"1/3").replace(/¼/g,"1/4").replace(/¾/g,"3/4").replace(/⅔/g,"2/3");
+  const mix = s.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)$/);
+  if (mix) return num(mix[1]) + num(mix[2])/num(mix[3]);
+  const fr = s.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (fr) return num(fr[1])/num(fr[2]);
+  return num(s);
+}
+function parseQtyUnitName(line) {
+  line = line.replace(/^[-*•●○]\s*/,"").replace(/\s+/g," ").trim();
+  if (!line || line.length>80) return null;
+  if (/^(ingredients|食材|材料|directions|作法|步驟|method|instructions)/i.test(line)) return { header:true, line };
+  const unit = "oz|ounces?|lb|lbs|pounds?|g|grams?|kg|ml|l|cup|cups|tbsp|tablespoons?|tsp|teaspoons?|bunch|bunches|pc|pcs|ea|each|顆|個|粒|隻|條|片|把|束|克|公斤|毫升|大匙|小匙|茶匙|湯匙";
+  const q = "(\\d+(?:\\.\\d+)?(?:\\s+\\d+\\/\\d+)?|\\d+\\/\\d+|[½⅓¼¾⅔])";
+  let m = line.match(new RegExp("^"+q+"\\s*("+unit+")\\s+(.+)$","i"));
+  if (m) return { per:fracToNum(m[1]), u:normUnit(m[2]), n:m[3].replace(/\s*\(.+?\)\s*$/,"").trim() };
+  m = line.match(new RegExp("^(.+?)\\s+"+q+"\\s*("+unit+")(?:\\s*\\/\\s*(?:人|guest|pp))?$","i"));
+  if (m) return { n:m[1].replace(/\s*\(.+?\)\s*$/,"").trim(), per:fracToNum(m[2]), u:normUnit(m[3]) };
+  m = line.match(new RegExp("^(.+?)\\s+"+q+"$","i"));
+  if (m && !/^(serves|yield|份量|人數)/i.test(m[1])) return { n:m[1].trim(), per:fracToNum(m[2]), u:"pc" };
+  if (/^(前菜|冷盤|海鮮|招牌|主菜|甜點|amuse|dessert|entree|crudo|#)/i.test(line)) return { dish:true, line };
+  return { n:line, per:1, u:"pc", weak:true };
+}
+
+function parseRecipesFromText(text) {
+  const rawLines = String(text||"").split(/\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith("//"));
+  let serves = 1;
+  const sm = text.match(/(?:serves|yield|份量|供)\s*[:：]?\s*(\d+)/i);
+  if (sm) serves = Math.max(1, num(sm[1]));
+  const courses = [];
+  let cur = { name:"掃描的菜", course:"其他", ings:[] };
+  const startNew = (name, course) => {
+    if (cur.ings.length || (cur.name && cur.name!=="掃描的菜")) courses.push(cur);
+    cur = { name: name || "未命名", course: course || "其他", ings:[] };
+  };
+  for (const line of rawLines) {
+    if (/^(serves|yield|份量|人數)/i.test(line)) continue;
+    if (/^#/.test(line) || /[:：]\s*$/.test(line) || /^(前菜|冷盤|海鮮|招牌|主菜|甜點)\b/.test(line)) {
+      let name = line.replace(/^#+\s*/,"").replace(/[:：]\s*$/,"").trim();
+      let course = "其他";
+      const hm = name.match(/^(前菜|冷盤|海鮮|招牌|主菜|甜點)\s*/);
+      if (hm) { course = hm[1]; name = name.slice(hm[0].length).trim() || hm[1]; }
+      startNew(name, course);
+      continue;
+    }
+    const p = parseQtyUnitName(line);
+    if (!p) continue;
+    if (p.header) continue;
+    if (p.dish) {
+      let name = p.line.replace(/^#+\s*/,"");
+      startNew(name, "其他");
+      continue;
+    }
+    if (p.weak && p.n.length>36) continue;
+    const per = serves>1 ? +(p.per/serves).toFixed(3) : p.per;
+    cur.ings.push({ n:p.n, per: per||1, u:p.u||"pc", vendor:"" });
+  }
+  if (cur.ings.length) courses.push(cur);
+  courses.forEach(c => c.ings.forEach(i => { i.vendor = routeVendor(i.n, i.vendor); }));
+  return { courses, serves, raw: text };
+}
+
+function openPaste(eid) {
+  scanTargetEvent = eid||"";
+  $("#sheet").innerHTML = `
+    <h2 class="serif" style="margin:0 0 8px;color:var(--gold2)">貼上或掃描食譜</h2>
+    <p class="hint">可貼完整食譜。若寫 Serves 4／份量 4，用量會自動除成「每位客人」。</p>
+    <textarea id="pasteBox" placeholder="# 冷盤 Hamachi&#10;Hamachi 1.75 oz&#10;白蘿蔔 0.2 顆"></textarea>
     <div class="btn-row">
-      <button class="btn gold" onclick="parsePaste('${eid||""}')">解析並加入食譜庫</button>
+      <button class="btn gold" onclick="showScanReview($('#pasteBox').value,'${eid||""}')">解析食材</button>
+      <button class="btn" onclick="pickRecipeFile('image')">改上傳照片</button>
       <button class="btn ghost" onclick="closeModal()">取消</button>
     </div>
   `;
   $("#modal").classList.remove("hidden");
 }
 
-function parsePaste(eid) {
-  const text = $("#pasteBox").value || "";
-  const lines = text.split(/\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith("//"));
-  const courses = [];
-  let cur = { name:"貼上的菜", course:"其他", ings:[] };
-  const startNew = (name, course) => {
-    if (cur.ings.length || (cur.name && cur.name!=="貼上的菜")) courses.push(cur);
-    cur = { name: name || "未命名", course: course || "其他", ings:[] };
-  };
-  const header = /^(?:#+\s*)?(前菜|冷盤|海鮮|招牌|主菜|甜點|amuse|appetizer|crudo|entree|dessert)?\s*[:：-]?\s*(.+)$/i;
-  const ingRe = /^[-*•]?\s*(.+?)\s+([0-9]+(?:\.[0-9]+)?)\s*(oz|lb|lbs|g|kg|ml|pc|pcs|ea|顆|個|粒|隻|條|片|把|束|bunch|tsp|tbsp)?\s*(?:\/\s*(?:人|guest|pp))?$/i;
-  const ingRe2 = /^[-*•]?\s*([0-9]+(?:\.[0-9]+)?)\s*(oz|lb|g|kg|ml|pc|顆|個|把|bunch)?\s+(.+)$/i;
-
-  for (const line of lines) {
-    if (/^#/.test(line) || /[:：]\s*$/.test(line) || /^(前菜|冷盤|海鮮|招牌|主菜|甜點)\b/.test(line)) {
-      let name = line.replace(/^#+\s*/,"").replace(/[:：]\s*$/,"").trim();
-      let course = "其他";
-      const m = name.match(/^(前菜|冷盤|海鮮|招牌|主菜|甜點)\s*/);
-      if (m) { course = m[1]; name = name.slice(m[0].length).trim() || m[1]; }
-      startNew(name, course);
-      continue;
-    }
-    let m = line.match(ingRe);
-    if (m) {
-      cur.ings.push({ n:m[1].trim(), per:num(m[2]), u:normUnit(m[3]||"pc"), vendor:"" });
-      continue;
-    }
-    m = line.match(ingRe2);
-    if (m) {
-      cur.ings.push({ n:m[3].trim(), per:num(m[1]), u:normUnit(m[2]||"pc"), vendor:"" });
-      continue;
-    }
-    if (line.length < 40) cur.ings.push({ n:line.replace(/^[-*•]\s*/,""), per:1, u:"pc", vendor:"" });
+function showScanReview(text, eid) {
+  scanTargetEvent = eid||"";
+  const parsed = parseRecipesFromText(text);
+  window._scanParsed = parsed;
+  if (!parsed.courses.length) {
+    $("#sheet").innerHTML = `
+      <h2 class="serif" style="margin:0 0 8px;color:var(--gold2)">沒掃到食材</h2>
+      <p class="hint">辨識原文如下，可手動改完再解析。</p>
+      <textarea id="pasteBox">${esc(text)}</textarea>
+      <div class="btn-row">
+        <button class="btn gold" onclick="showScanReview($('#pasteBox').value,'${eid||""}')">再解析</button>
+        <button class="btn ghost" onclick="closeModal()">取消</button>
+      </div>`;
+    $("#modal").classList.remove("hidden");
+    return;
   }
-  if (cur.ings.length) courses.push(cur);
-
-  if (!courses.length) { alert("沒解析到食材。請用「名稱 數量 單位」格式。"); return; }
+  const blocks = parsed.courses.map((c,ci)=>`
+    <div class="recipe">
+      <input value="${escAttr(c.name)}" oninput="_scanParsed.courses[${ci}].name=this.value">
+      ${(c.ings||[]).map((i,ii)=>`
+        <div class="split" style="margin-top:6px;align-items:center">
+          <input style="flex:1" value="${escAttr(i.n)}" oninput="_scanParsed.courses[${ci}].ings[${ii}].n=this.value">
+          <input class="tiny" style="width:64px" type="number" step="0.01" value="${i.per}" oninput="_scanParsed.courses[${ci}].ings[${ii}].per=num(this.value)">
+          <span class="muted">${esc(i.u)}</span>
+        </div>`).join("")}
+    </div>`).join("");
+  $("#sheet").innerHTML = `
+    <h2 class="serif" style="margin:0 0 8px;color:var(--gold2)">確認食材</h2>
+    <p class="hint">已掃到 ${parsed.courses.length} 道、${parsed.courses.reduce((s,c)=>s+c.ings.length,0)} 項。用量是每位客人${parsed.serves>1?"（原食譜 "+parsed.serves+" 人已換算）":""}。不對的可改。</p>
+    ${blocks}
+    <details style="margin:10px 0"><summary class="muted">辨識原文</summary><pre class="hint" style="white-space:pre-wrap">${esc(text)}</pre></details>
+    <div class="btn-row">
+      <button class="btn gold" onclick="commitScanned('${eid||""}')">加入菜單</button>
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+    </div>
+  `;
+  $("#modal").classList.remove("hidden");
+}
+function commitScanned(eid) {
+  const parsed = window._scanParsed;
+  if (!parsed || !parsed.courses.length) return;
   const newIds = [];
-  courses.forEach(c => {
+  parsed.courses.forEach(c => {
     c.id = uid();
-    c.ings.forEach(i => i.vendor = routeVendor(i.n, i.vendor));
+    c.ings = (c.ings||[]).filter(i=>i.n && num(i.per)>=0);
+    c.ings.forEach(i => { if (!i.vendor) i.vendor = routeVendor(i.n,""); });
+    if (!c.ings.length) return;
     state.recipes.push(c);
     newIds.push(c.id);
   });
   if (eid) {
     const e = evById(eid);
-    e.recipeIds = [...(e.recipeIds||[]), ...newIds];
+    if (e) e.recipeIds = [...(e.recipeIds||[]), ...newIds];
   }
   save();
   closeModal();
   switchTab("menu");
   renderRecipes();
-  alert(`已加入 ${courses.length} 道菜、共 ${courses.reduce((s,c)=>s+c.ings.length,0)} 項食材。`);
+  alert("已加入 "+newIds.length+" 道菜。");
 }
 
 function buildShopItems(e) {
