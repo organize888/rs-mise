@@ -120,13 +120,13 @@
         <h2>菜單／食譜庫</h2>
         <button class="btn gold" onclick="openRecipeForm()">＋ 新食譜</button>
       </div>
-      <p class="hint">上傳食譜照片、截圖或文字檔，自動掃出食材與用量。也可拍照或直接貼文字。</p>
+      <p class="hint">從相簿上傳食譜照片或截圖，自動掃出食材。可一次選多張。也可上傳文字檔或直接貼。</p>
       <div class="btn-row" style="margin-top:0">
-        <button class="btn gold" onclick="pickRecipeFile('image')">上傳／拍照食譜</button>
+        <button class="btn gold" onclick="pickRecipeFile('image')">上傳食譜照片</button>
         <button class="btn" onclick="pickRecipeFile('text')">上傳文字檔</button>
         <button class="btn" onclick="openPaste()">貼文字</button>
       </div>
-      <input id="recipeFile" type="file" accept="image/*,text/plain,.txt,.md,.csv" capture="environment" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none" onchange="onRecipeFile(this)">
+      <input id="recipeFile" type="file" accept="image/*,.heic,.heif,.jpg,.jpeg,.png,.webp" multiple style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none" onchange="onRecipeFile(this)">
       <div id="recipeList"></div>
     </div>
   </section>
@@ -536,7 +536,7 @@ function openEvent(id) {
     ${recs.map(r=>`<div class="recipe"><b>${esc(r.name)}</b><div class="muted">${(r.ings||[]).map(i=>i.n).join(" · ")}</div></div>`).join("") || `<div class="empty">還沒套食譜</div>`}
     <div class="btn-row">
       <button class="btn" onclick="openAttach('${e.id}')">套用／增減菜品</button>
-      <button class="btn" onclick="scanTargetEvent='${e.id}';pickRecipeFile('image')">上傳這場的食譜</button>
+      <button class="btn" onclick="scanTargetEvent='${e.id}';pickRecipeFile('image')">上傳這場的食譜照片</button>
       <button class="btn" onclick="openPaste('${e.id}')">貼文字</button>
     </div>
     <p class="hint" style="margin-top:12px">採購會去 ${stores.length} 個地方：${stores.map(esc).join("、")||"—"}</p>
@@ -701,21 +701,22 @@ let scanTargetEvent = "";
 function pickRecipeFile(kind, eid) {
   if (eid!==undefined) scanTargetEvent = eid||"";
   const inp = $("#recipeFile");
-  inp.accept = kind==="text" ? "text/plain,.txt,.md,.csv,.rtf" : "image/*,.heic,.heif";
-  if (kind==="image") inp.setAttribute("capture","environment");
-  else inp.removeAttribute("capture");
+  inp.removeAttribute("capture");
+  inp.accept = kind==="text" ? "text/plain,.txt,.md,.csv,.rtf" : "image/*,.heic,.heif,.jpg,.jpeg,.png,.webp";
+  inp.multiple = kind!=="text";
   inp.value = "";
   inp.click();
 }
 function onRecipeFile(inp) {
-  const file = inp.files && inp.files[0];
-  if (!file) return;
-  const isImg = /^image\//.test(file.type) || /\.(heic|heif|jpg|jpeg|png|webp|gif)$/i.test(file.name);
-  if (isImg) scanRecipeImage(file, scanTargetEvent);
-  else {
+  const files = [...(inp.files||[])];
+  if (!files.length) return;
+  const imgs = files.filter(f => /^image\//.test(f.type) || /\.(heic|heif|jpg|jpeg|png|webp|gif)$/i.test(f.name));
+  const texts = files.filter(f => !imgs.includes(f));
+  if (imgs.length) scanRecipeImages(imgs, scanTargetEvent);
+  else if (texts[0]) {
     const reader = new FileReader();
     reader.onload = () => showScanReview(String(reader.result||""), scanTargetEvent);
-    reader.readAsText(file);
+    reader.readAsText(texts[0]);
   }
 }
 
@@ -747,38 +748,45 @@ function resizeForOcr(file) {
     img.src = url;
   });
 }
-async function scanRecipeImage(file, eid) {
+async function scanRecipeImages(files, eid) {
+  const list = Array.isArray(files) ? files : [files];
   $("#sheet").innerHTML = `
-    <h2 class="serif" style="margin:0 0 8px;color:var(--gold2)">掃描食譜</h2>
-    <p class="hint" id="scanStat">準備辨識「${esc(file.name)}」…第一次會下載語系檔，約需數十秒。</p>
+    <h2 class="serif" style="margin:0 0 8px;color:var(--gold2)">掃描食譜照片</h2>
+    <p class="hint" id="scanStat">從相簿讀取 ${list.length} 張，準備辨識…第一次會下載語系檔。</p>
     <div class="bar"><i id="scanBar" style="width:8%"></i></div>
     <img id="scanPrev" alt="" style="width:100%;margin-top:12px;border-radius:12px;border:1px solid var(--line);max-height:220px;object-fit:cover">
     <div class="btn-row"><button class="btn ghost" onclick="closeModal()">取消</button></div>
   `;
   $("#modal").classList.remove("hidden");
-  const prevUrl = URL.createObjectURL(file);
-  const prev = $("#scanPrev"); if (prev) prev.src = prevUrl;
   try {
     const T = await loadTesseract();
-    const blob = await resizeForOcr(file);
     const worker = await T.createWorker("eng+chi_tra", 1, {
       logger: m => {
         const st = $("#scanStat"); const bar = $("#scanBar");
         if (!st) return;
         const p = Math.round((m.progress||0)*100);
-        if (m.status==="loading tesseract core") st.textContent = "載入辨識引擎…";
-        else if (m.status==="loading language traineddata") st.textContent = "下載中英辨識檔…";
-        else if (m.status==="initializing api") st.textContent = "初始化…";
+        if (m.status==="loading language traineddata") st.textContent = "下載中英辨識檔…";
         else if (m.status==="recognizing text") st.textContent = "正在讀食材 " + p + "%";
         else st.textContent = m.status || "處理中…";
         if (bar) bar.style.width = Math.max(8, p) + "%";
       }
     });
-    const { data } = await worker.recognize(blob);
+    const chunks = [];
+    for (let i=0;i<list.length;i++) {
+      const file = list[i];
+      const st = $("#scanStat");
+      if (st) st.textContent = `辨識第 ${i+1}/${list.length} 張：${file.name}`;
+      const prev = $("#scanPrev");
+      if (prev) prev.src = URL.createObjectURL(file);
+      const blob = await resizeForOcr(file);
+      const { data } = await worker.recognize(blob);
+      const t = (data && data.text || "").trim();
+      if (t) chunks.push(t);
+    }
     await worker.terminate();
-    const text = (data && data.text || "").trim();
+    const text = chunks.join("\n\n");
     if (!text) {
-      $("#scanStat").textContent = "沒讀到字。請拍清楚、光線夠，或改貼文字。";
+      $("#scanStat").textContent = "沒讀到字。換一張較清楚的照片，或改貼文字。";
       return;
     }
     showScanReview(text, eid);
