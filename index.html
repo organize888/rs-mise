@@ -18,16 +18,16 @@
       --safe:env(safe-area-inset-bottom,16px);
     }
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-    html,body{margin:0;background:var(--bg);color:var(--text);font-family:"Noto Sans TC",system-ui,sans-serif}
-    body{min-height:100dvh;padding-bottom:calc(76px + var(--safe))}
+    html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:"Noto Sans TC",system-ui,sans-serif}
+    .app{height:100dvh;height:100svh;display:flex;flex-direction:column;overflow:hidden}
     button,input,select,textarea{font-family:inherit}
     h1,h2,h3,.serif{font-family:"Cormorant Garamond",serif}
-    .top{position:sticky;top:0;z-index:20;background:linear-gradient(180deg,#1a0a0e 70%,rgba(26,10,14,.88));backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:14px 18px 10px}
+    .top{flex:0 0 auto;background:#1a0a0e;border-bottom:1px solid var(--line);padding:14px 18px 10px}
     .brand{display:flex;align-items:center;gap:12px}
     .mono{width:42px;height:42px;border-radius:50%;border:1.5px solid var(--gold);display:grid;place-items:center;background:radial-gradient(circle at 30% 30%,#3a1820,#1a0a0e);color:var(--gold2);font-family:"Cormorant Garamond",serif;font-weight:700;font-size:16px}
     .brand h1{margin:0;font-size:20px;letter-spacing:2px;color:var(--gold2);font-weight:600}
     .brand p{margin:0;font-size:11px;letter-spacing:1.4px;color:var(--muted)}
-    .wrap{padding:14px 16px 24px;max-width:740px;margin:0 auto}
+    .wrap{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px 24px;max-width:740px;width:100%;margin:0 auto}
     .hidden{display:none!important}
     .card{background:linear-gradient(180deg,var(--card),#1e0e13);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}
     .card h2{margin:0 0 10px;font-size:20px;color:var(--gold2);font-weight:600}
@@ -54,7 +54,7 @@
     .event{border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;background:#1a0c10}
     .event h3{margin:0 0 4px;font-size:17px;color:var(--gold2)}
     .muted{color:var(--muted);font-size:12px;line-height:1.45}
-    .nav{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#16090c;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(6,1fr);padding:6px 2px calc(8px + var(--safe))}
+    .nav{flex:0 0 auto;position:relative;left:auto;right:auto;bottom:auto;z-index:30;background:#16090c;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(6,1fr);padding:6px 2px calc(8px + var(--safe))}
     .nav button{background:none;border:0;color:var(--muted);font-size:10px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0}
     .nav button.on{color:var(--gold2)}
     .nav .ico{font-size:16px}
@@ -92,6 +92,7 @@
   </style>
 </head>
 <body>
+<div class="app">
 <header class="top">
   <div class="brand">
     <div class="mono">RS</div>
@@ -128,7 +129,7 @@
         </label>
         <label class="btn" style="display:inline-flex;align-items:center;cursor:pointer">
           上傳 PDF
-          <input id="pdfLib" type="file" accept="application/pdf,.pdf" style="display:none" onchange="onPdfFile(this)">
+          <input id="pdfLib" type="file" accept="application/pdf,.pdf" multiple style="display:none" onchange="onPdfFile(this)">
         </label>
       </div>
       <div class="field" style="margin-top:14px">
@@ -224,6 +225,7 @@
 </nav>
 
 <div id="modal" class="modal-bg hidden" onclick="if(event.target.id==='modal')closeModal()"><div class="sheet" id="sheet"></div></div>
+</div>
 
 <script>
 const $ = (s,el=document)=>el.querySelector(s);
@@ -722,7 +724,7 @@ function onRecipeFile(inp) {
   const pdfs = files.filter(f => /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name));
   const imgs = files.filter(f => !pdfs.includes(f) && (/^image\//.test(f.type) || /\.(heic|heif|jpg|jpeg|png|webp|gif)$/i.test(f.name)));
   const texts = files.filter(f => !pdfs.includes(f) && !imgs.includes(f));
-  if (pdfs[0]) scanPdfFile(pdfs[0], scanTargetEvent);
+  if (pdfs.length) scanPdfFiles(pdfs, scanTargetEvent);
   else if (imgs.length) scanRecipeImages(imgs, scanTargetEvent);
   else if (texts[0]) {
     const reader = new FileReader();
@@ -731,9 +733,19 @@ function onRecipeFile(inp) {
   }
 }
 function onPdfFile(inp) {
-  const file = inp.files && inp.files[0];
+  const files = [...(inp.files||[])];
   inp.value = "";
-  if (file) scanPdfFile(file, scanTargetEvent);
+  if (!files.length) return;
+  const bad = files.filter(f => !f.size);
+  if (bad.length) {
+    alert("這個 PDF 還在 iCloud 雲端、本機是空的。回到檔案 App 先點雲朵下載，等檔案變可開再用。");
+    return;
+  }
+  scanPdfFiles(files, scanTargetEvent);
+}
+function looksLikePdf(buf) {
+  const u = new Uint8Array(buf.slice(0, 8));
+  return u.length>=4 && u[0]===0x25 && u[1]===0x50 && u[2]===0x44 && u[3]===0x46; // %PDF
 }
 function loadPdfJs() {
   return new Promise((resolve, reject) => {
@@ -748,7 +760,21 @@ function loadPdfJs() {
     document.head.appendChild(s);
   });
 }
-async function scanPdfFile(file, eid) {
+async function scanPdfFiles(files, eid) {
+  const list = Array.isArray(files) ? files : [files];
+  let all = "";
+  for (const f of list) {
+    const t = await scanPdfFile(f, eid, true);
+    if (t) all += (all?"\n\n":"") + t;
+  }
+  if (!all.trim()) {
+    $("#sheet").innerHTML = `<h2 class="serif" style="margin:0 0 8px;color:var(--gold2)">讀不到 PDF</h2><p class="hint">若檔案上有雲朵或 Error，先在「檔案」App 下載到本機再傳。也可把 PDF 截圖後用「從相簿選照片」。</p><div class="btn-row"><button class="btn ghost" onclick="closeModal()">關閉</button></div>`;
+    $("#modal").classList.remove("hidden");
+    return;
+  }
+  showScanReview(all, eid);
+}
+async function scanPdfFile(file, eid, returnText) {
   $("#sheet").innerHTML = `
     <h2 class="serif" style="margin:0 0 8px;color:var(--gold2)">讀取 PDF</h2>
     <p class="hint" id="scanStat">正在打開「${esc(file.name)}」…</p>
@@ -759,7 +785,7 @@ async function scanPdfFile(file, eid) {
   try {
     const pdfjs = await loadPdfJs();
     const buf = await file.arrayBuffer();
-    const pdf = await pdfjs.getDocument({ data: buf }).promise;
+    const pdf = await pdfjs.getDocument({ data: buf, disableWorker: true }).promise;
     const n = Math.min(pdf.numPages, 20);
     let text = "";
     for (let p=1; p<=n; p++) {
@@ -796,12 +822,15 @@ async function scanPdfFile(file, eid) {
     }
     if (!text.trim()) {
       $("#scanStat").textContent = "PDF 裡沒讀到食譜文字。改上傳照片或直接打字。";
-      return;
+      return "";
     }
+    if (returnText) return text;
     showScanReview(text, eid);
+    return text;
   } catch (err) {
     const st = $("#scanStat");
     if (st) st.textContent = "PDF 讀取失敗：" + (err.message||err);
+    return "";
   }
 }
 
