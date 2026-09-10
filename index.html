@@ -918,8 +918,9 @@ function fracToNum(s) {
   if (fr) return num(fr[1])/num(fr[2]);
   return num(s);
 }
-const UNIT_WORD = "oz|ounces?|lb|lbs|pounds?|g|grams?|kg|ml|l|cup|cups|tbsp|tablespoons?|tsp|teaspoons?|bunch|bunches|pc|pcs|ea|each|顆|個|粒|隻|條|片|把|束|克|公斤|毫升|大匙|小匙|茶匙|湯匙";
+const UNIT_WORD = "oz|ounces?|lb|lbs|pounds?|grams?|kg|ml|cup|cups|tbsp|tablespoons?|tsp|teaspoons?|bunch|bunches|pcs|pc|ea|each|顆|個|粒|隻|條|片|把|束|克|公斤|毫升|大匙|小匙|茶匙|湯匙|\\bg\\b";
 const QTY_WORD = "(\\d+(?:\\.\\d+)?(?:\\s+\\d+\\/\\d+)?|\\d+\\/\\d+|[½⅓¼¾⅔])";
+const UNIT_CORE = "g|ml|oz|lb|kg|pc|pcs|cup|tbsp|tsp|bunch|顆|個|把|束|克|毫升";
 
 function cleanIngName(n) {
   return String(n||"")
@@ -931,76 +932,101 @@ function cleanIngName(n) {
     .replace(/\s+/g, " ")
     .trim();
 }
-function isJunkLine(line) {
-  return /^(ingredients|食材|材料|directions|作法|步驟|method|instructions|notes?|procedure)$/i.test(line)
-    || /^(heat|add|whisk|bring|simmer|fold|plate|serve|煮|拌|加入|加熱)/i.test(line);
+function isolateIngredientText(text) {
+  let t = String(text||"");
+  t = t.split(/出餐\s*P\s*I\s*C\s*K\s*U\s*P|出餐 PICKUP|\bPICKUP\b|擺盤|質控\s*CCP|保存\s*\/\s*HOLD|成本備註|主廚備註/i)[0];
+  const cut = t.search(/備料\s*MISE|\bMISE\b|項目\s+份量|組件/);
+  if (cut >= 0) t = t.slice(cut);
+  return t;
 }
-function explodeQtyPairs(line) {
-  const re = new RegExp(QTY_WORD+"\\s*("+UNIT_WORD+")","gi");
-  const found = [];
-  let m;
-  while ((m = re.exec(line))) found.push({ i:m.index, len:m[0].length, per:fracToNum(m[1]), u:normUnit(m[2]) });
-  if (found.length < 2) return null;
-  const items = [];
-  for (let k=0;k<found.length;k++) {
-    const start = k===0 ? 0 : found[k-1].i + found[k-1].len;
-    const name = cleanIngName(line.slice(start, found[k].i));
-    if (name) items.push({ n:name, per:found[k].per, u:found[k].u });
-  }
-  return items.length ? items : null;
+function isProcessLine(line) {
+  if (/^(0?\d{1,2})\s+(CCP\b|pat |blend |whisk |heat |cold-smoke |rest |hold |conpoy soak |blender |stream |load |caviar on |order in|\+\d+\s*s|run\b)/i.test(line)) return true;
+  if (/\bCCP\b/.test(line)) return true;
+  if (/^(heat|add|whisk|bring|simmer|fold|plate out|serve|order in|wipe rim)/i.test(line)) return true;
+  if (/合格:|不合格/.test(line)) return true;
+  if (/^\d+\s*min\b/i.test(line)) return true;
+  if (/^(lead|body|acid-salt|finish|bridge|概念|風味|過敏原|技法|菜序|檔口|產量|備料時間|出餐|執行難度)\b/i.test(line)) return true;
+  if ((/°C|°F/.test(line) || /\b\d+\s*min\b/.test(line)) && !new RegExp("\\d+\\s*("+UNIT_CORE+")\\b","i").test(line)) return true;
+  return false;
+}
+function isPrepTitle(n) {
+  return /(蓉|purée|凝醬|\bgel\b|ketchup body|finish mise|cold-smoked|煙燻干貝|組件)$/i.test(n)
+    || /^(杏仁豆腐瑤柱蓉|白腐乳凝醬|冷煙燻干貝|完成件)/.test(n);
+}
+function isFoodName(n) {
+  if (!n || n.length<2 || n.length>42) return false;
+  if (/^(clean|pass |pat |hold |order |dot\/|wipe |dropper|vessel|盤|mother-of-pearl|sashimi scallop$|項目|份量)/i.test(n)) return false;
+  if (/vessel|plates?\b|covers?\b/.test(n)) return false;
+  if (/chinois|squeeze bottle|smoke gun|damp paper|freezer short|ice nest/.test(n)) return false;
+  return /[\u4e00-\u9fff]/.test(n) || /(tofu|scallop|conpoy|almond|caviar|furu|agar|xanthan|oil|salt|sugar|vinegar|butter|soy|yuzu|shiso|hamachi|gel|juice|water|stock|pepper|wood|chip|green|zest|cream)/i.test(n);
+}
+function stripProcessTail(line) {
+  return line
+    .replace(/\d+L\b/gi, " ")
+    .replace(/\b\d+\s*°\s*[CF]\b/gi, " ")
+    .replace(/\b\d+\s*(min|sec|s)\b/gi, " ")
+    .replace(/\b(GM|pass|sauce|dropper|dry store|ice nest|ice \+ film|freezer short|damp paper)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function extractIngFromLine(line) {
+  const s = stripProcessTail(line.replace(/^[-*•●○]\s*/, ""));
+  const only = s.match(new RegExp("^"+QTY_WORD+"\\s*("+UNIT_CORE+")$","i"));
+  if (only) return { qtyOnly:true, per: fracToNum(only[1]), u: normUnit(only[2]) };
+  const m = s.match(new RegExp("^(.*?)\\s+"+QTY_WORD+"\\s*("+UNIT_CORE+")\\b","i"));
+  if (m && cleanIngName(m[1])) return { n: cleanIngName(m[1]), per: fracToNum(m[2]), u: normUnit(m[3]) };
+  const lead = s.match(new RegExp("^"+QTY_WORD+"\\s*("+UNIT_CORE+")\\s+(.{1,42})$","i"));
+  if (lead) return { n: cleanIngName(lead[3]), per: fracToNum(lead[1]), u: normUnit(lead[2]) };
+  return { n: cleanIngName(s), weak:true };
 }
 
 function parseRecipesFromText(text) {
+  const isolated = isolateIngredientText(text);
   let serves = 1;
-  const sm = String(text).match(/(?:serves|yield|份量|供)\s*[:：]?\s*(\d+)/i);
+  const sm = String(text).match(/(?:serves|yield|份量|產量|plates?|covers?|供)\s*[:：]?\s*(\d+)/i)
+          || String(text).match(/(\d+)\s*(?:plates?|covers?|人份)/i);
   if (sm) serves = Math.max(1, num(sm[1]));
   const scale = x => serves>1 && x!=null ? +(Number(x)/serves).toFixed(3) : x;
-  const lines = String(text||"").replace(/\r/g,"\n").split(/\n/).map(s=>s.replace(/\s+/g," ").trim()).filter(Boolean);
+  const titleM = String(text).match(/([^\n]{6,40}干貝[^\n]{0,20}|[^\n]{6,40}scallop[^\n]{0,20})/i);
+  const dishName = titleM ? titleM[1].replace(/\s+/g," ").trim().slice(0,42) : "掃描的菜";
+  const lines = isolated.replace(/\r/g,"\n").split(/\n/).map(s=>s.replace(/\s+/g," ").trim()).filter(Boolean);
   const courses = [];
-  let cur = { name:"掃描的菜", course:"其他", ings:[] };
+  let cur = { name: dishName, course:"冷盤", ings:[] };
   let pendingQty = null;
   const startNew = (name, course) => {
-    if (cur.ings.length || (cur.name && cur.name!=="掃描的菜")) courses.push(cur);
+    if (cur.ings.length) courses.push(cur);
     cur = { name: name || "未命名", course: course || "其他", ings:[] };
     pendingQty = null;
   };
   const pushIng = (n, per, u) => {
     n = cleanIngName(n);
-    if (!n || /^\d/.test(n) && n.length<8) return;
-    if (isJunkLine(n)) return;
+    if (!isFoodName(n)) return;
+    if (isPrepTitle(n)) { startNew(n, cur.course); return; }
+    const dup = cur.ings.find(i => i.n===n);
+    if (dup) {
+      if (per!=null) dup.per = (dup.per||0) + scale(per);
+      return;
+    }
     cur.ings.push({ n, per: per==null?null:scale(per), u: u||null, vendor:"" });
   };
   for (const raw of lines) {
-    if (/^(serves|yield|份量|人數)/i.test(raw)) continue;
-    if (isJunkLine(raw) && raw.length<40) continue;
-    if (/^#/.test(raw) || /^(前菜|冷盤|海鮮|招牌|主菜|甜點)\b/.test(raw) || (/[:：]\s*$/.test(raw) && raw.length<40)) {
-      let name = raw.replace(/^#+\s*/,"").replace(/[:：]\s*$/,"").trim();
-      let course = "其他";
-      const hm = name.match(/^(前菜|冷盤|海鮮|招牌|主菜|甜點)\s*/);
-      if (hm) { course = hm[1]; name = name.slice(hm[0].length).trim() || hm[1]; }
-      startNew(name, course);
-      continue;
-    }
-    const many = explodeQtyPairs(raw);
-    if (many) { many.forEach(it => pushIng(it.n, it.per, it.u)); pendingQty=null; continue; }
-    let m = raw.match(new RegExp("^"+QTY_WORD+"\\s*("+UNIT_WORD+")$","i"));
-    if (m) {
-      const per = fracToNum(m[1]), u = normUnit(m[2]);
+    if (isProcessLine(raw)) { pendingQty=null; continue; }
+    if (/^(項目|份量|處理|檔口|保存|備料|MISE|組件|完成件|ingredients|食材|材料)$/i.test(raw)) continue;
+    const p = extractIngFromLine(raw);
+    if (p.qtyOnly) {
       const last = cur.ings[cur.ings.length-1];
-      if (last && last.per==null) { last.per = scale(per); last.u = u; }
-      else pendingQty = { per, u };
+      if (last && last.per==null) { last.per = scale(p.per); last.u = p.u; }
+      else pendingQty = { per:p.per, u:p.u };
       continue;
     }
-    m = raw.match(new RegExp("^"+QTY_WORD+"\\s*("+UNIT_WORD+")\\s+(.+)$","i"));
-    if (m) { pushIng(m[3], fracToNum(m[1]), normUnit(m[2])); pendingQty=null; continue; }
-    m = raw.match(new RegExp("^(.+?)\\s+"+QTY_WORD+"\\s*("+UNIT_WORD+")(?:\\s*/\\s*(?:人|guest|pp))?$","i"));
-    if (m) { pushIng(m[1], fracToNum(m[2]), normUnit(m[3])); pendingQty=null; continue; }
-    const name = cleanIngName(raw);
-    if (pendingQty) { pushIng(name, pendingQty.per, pendingQty.u); pendingQty=null; continue; }
-    if (name && name.length<48) pushIng(name, null, null);
+    if (p.weak) {
+      if (pendingQty && isFoodName(p.n)) { pushIng(p.n, pendingQty.per, pendingQty.u); pendingQty=null; }
+      continue;
+    }
+    if (p.n && p.per!=null) { pushIng(p.n, p.per, p.u); pendingQty=null; }
   }
-  cur.ings = cur.ings.filter(i => i.n && !/^\d+(\.\d+)?\s*(g|ml|oz|lb)?$/i.test(i.n));
-  cur.ings.forEach(i => { if (i.per==null) i.per = 1; if (!i.u) i.u = "pc"; i.vendor = routeVendor(i.n, i.vendor); });
+  cur.ings = cur.ings.filter(i => i.n && i.per!=null);
+  cur.ings.forEach(i => { if (!i.u) i.u = "pc"; i.vendor = routeVendor(i.n, i.vendor); });
   if (cur.ings.length) courses.push(cur);
   return { courses, serves, raw: text };
 }
