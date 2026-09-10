@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#1a0a0e" />
+  <title>RS Mise · 私廚行程與採購</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:#14080b; --bg2:#1c0d11; --card:#241116; --line:rgba(201,162,39,.22);
+      --gold:#c9a227; --gold2:#e8d5a3; --gold3:#8a6d1a; --burg:#8b2332; --burg2:#6b1d2a;
+      --text:#f4ead8; --muted:#b9a89a; --ok:#7dba7a; --warn:#d4a017; --bad:#d45a5a;
+      --safe:env(safe-area-inset-bottom,16px);
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{margin:0;background:var(--bg);color:var(--text);font-family:"Noto Sans TC",system-ui,sans-serif}
+    body{min-height:100dvh;padding-bottom:calc(76px + var(--safe))}
+    button,input,select,textarea{font-family:inherit}
+    h1,h2,h3,.serif{font-family:"Cormorant Garamond",serif}
+    .top{position:sticky;top:0;z-index:20;background:linear-gradient(180deg,#1a0a0e 70%,rgba(26,10,14,.88));backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:14px 18px 10px}
+    .brand{display:flex;align-items:center;gap:12px}
+    .mono{width:42px;height:42px;border-radius:50%;border:1.5px solid var(--gold);display:grid;place-items:center;background:radial-gradient(circle at 30% 30%,#3a1820,#1a0a0e);color:var(--gold2);font-family:"Cormorant Garamond",serif;font-weight:700;font-size:16px}
+    .brand h1{margin:0;font-size:20px;letter-spacing:2px;color:var(--gold2);font-weight:600}
+    .brand p{margin:0;font-size:11px;letter-spacing:1.4px;color:var(--muted)}
+    .wrap{padding:14px 16px 24px;max-width:740px;margin:0 auto}
+    .hidden{display:none!important}
+    .card{background:linear-gradient(180deg,var(--card),#1e0e13);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}
+    .card h2{margin:0 0 10px;font-size:20px;color:var(--gold2);font-weight:600}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .field{flex:1;min-width:120px}
+    label{display:block;font-size:11px;letter-spacing:1px;color:var(--muted);margin-bottom:6px}
+    input,select,textarea{width:100%;background:#12070a;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:16px}
+    textarea{min-height:140px;line-height:1.45;font-size:14px}
+    input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold)}
+    .metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+    .metric{background:#16090c;border:1px solid var(--line);border-radius:12px;padding:12px}
+    .metric span{display:block;font-size:11px;color:var(--muted)}
+    .metric b{display:block;margin-top:4px;font-size:22px;font-family:"Cormorant Garamond",serif;color:var(--gold2);font-weight:600}
+    .metric.wide{grid-column:1/-1}
+    .btn{appearance:none;border:1px solid var(--gold3);background:transparent;color:var(--gold2);border-radius:999px;padding:9px 14px;font-size:13px;cursor:pointer}
+    .btn.gold{background:linear-gradient(180deg,#d4b44a,#9a7a1c);border-color:#c9a227;color:#1a0a0e;font-weight:600}
+    .btn.solid{background:linear-gradient(180deg,#9a2a3a,var(--burg2));border-color:#a83a48;color:#fff8ea}
+    .btn.ghost{opacity:.8}
+    .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .split{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+    .hint{font-size:12px;color:var(--muted);line-height:1.55}
+    .pill{font-size:10px;letter-spacing:.6px;border:1px solid var(--line);border-radius:99px;padding:3px 8px;color:var(--muted);white-space:nowrap}
+    .pill.on{border-color:var(--gold3);color:var(--gold2)}
+    .event{border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;background:#1a0c10}
+    .event h3{margin:0 0 4px;font-size:17px;color:var(--gold2)}
+    .muted{color:var(--muted);font-size:12px;line-height:1.45}
+    .nav{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#16090c;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);padding:6px 2px calc(8px + var(--safe))}
+    .nav button{background:none;border:0;color:var(--muted);font-size:10px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0}
+    .nav button.on{color:var(--gold2)}
+    .nav .ico{font-size:16px}
+    .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:40;display:grid;place-items:end center}
+    .sheet{width:100%;max-width:740px;background:var(--bg2);border-top:1px solid var(--line);border-radius:18px 18px 0 0;padding:16px 16px calc(22px + var(--safe));max-height:90vh;overflow:auto}
+    .danger{color:var(--bad);background:none;border:0;font-size:12px;cursor:pointer}
+    .empty{text-align:center;color:var(--muted);padding:22px 8px;font-size:13px}
+    .bar{height:8px;background:#2a1418;border-radius:99px;overflow:hidden;margin-top:10px}
+    .bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--gold3),var(--gold))}
+    .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:6px}
+    .chip{flex:0 0 auto;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:99px;padding:6px 12px;font-size:12px}
+    .chip.on{background:var(--burg2);color:var(--gold2);border-color:var(--gold3)}
+    .search{position:relative;margin-bottom:10px}
+    .search input{padding-left:36px}
+    .search::before{content:"⌕";position:absolute;left:12px;top:10px;color:var(--gold)}
+    .shop-item{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:start;padding:10px 0;border-bottom:1px solid rgba(201,162,39,.08)}
+    .shop-item b{display:block;font-weight:600;font-size:14px}
+    .vendor-name{color:var(--gold2);font-size:12px;margin-top:2px}
+    .qty-badge{font-family:"Cormorant Garamond",serif;font-size:20px;color:var(--gold2);white-space:nowrap}
+    .check{width:18px;height:18px;margin-top:4px}
+    .recipe{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;background:#1a0c10}
+    .tags{display:flex;gap:6px;flex-wrap:wrap}
+    .tag{font-size:10px;padding:3px 7px;border-radius:6px;background:#2a151a;color:var(--gold2);border:1px solid var(--line)}
+    .links{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+    .links a{text-decoration:none}
+    .status.ok{color:var(--ok)} .status.warn{color:var(--warn)} .status.bad{color:var(--bad)}
+    .foot-note{font-size:11px;color:var(--muted);margin-top:8px}
+    .when{font-size:13px;color:var(--gold2)}
+    @media print {
+      .top,.nav,.btn,.btn-row,.no-print{display:none!important}
+      body{background:#fff;color:#111;padding:0}
+      .card,.event,.recipe{border:1px solid #ccc;background:#fff;color:#111}
+      .wrap{max-width:none}
+    }
+  </style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="mono">RS</div>
+    <div>
+      <h1>ROOM SERVICE</h1>
+      <p>Mise · Schedule · Sourcing</p>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="tab-cal">
+    <div class="card">
+      <div class="split">
+        <h2>行程</h2>
+        <button class="btn gold" onclick="openEventForm()">＋ 新活動</button>
+      </div>
+      <p class="hint">登記日期與人數，套上菜單後一鍵出採購單。數量會進位成你實際買得到的整數（不會出現 2.5 顆蘋果）。</p>
+      <div id="calList"></div>
+    </div>
+  </section>
+
+  <section id="tab-menu" class="hidden">
+    <div class="card">
+      <div class="split">
+        <h2>菜單／食譜庫</h2>
+        <button class="btn gold" onclick="openRecipeForm()">＋ 新食譜</button>
+      </div>
+      <p class="hint">用量以「每位客人」為準。丟整套菜單：貼上文字即可解析。</p>
+      <div class="btn-row" style="margin-top:0">
+        <button class="btn" onclick="openPaste()">把整套菜單貼進來</button>
+      </div>
+      <div id="recipeList"></div>
+    </div>
+  </section>
+
+  <section id="tab-shop" class="hidden">
+    <div class="card">
+      <div class="split">
+        <h2>採購單</h2>
+        <button class="btn" onclick="window.print()">列印</button>
+      </div>
+      <div class="field">
+        <label>要採購的活動</label>
+        <select id="shopEvent" onchange="state.activeEvent=this.value;save();renderShop()"></select>
+      </div>
+      <div class="btn-row">
+        <button class="btn gold" onclick="buildShop()">依菜單重算清單</button>
+        <button class="btn" onclick="clearBought()">清掉已買</button>
+      </div>
+      <p class="hint" id="shopHint"></p>
+      <div id="shopList"></div>
+    </div>
+  </section>
+
+  <section id="tab-cogs" class="hidden">
+    <div class="card">
+      <h2>成本控制</h2>
+      <p class="hint">跟目前選中的活動連動。也可手動改人數／售價。</p>
+      <div class="field" style="margin-bottom:10px">
+        <label>計算哪一場</label>
+        <select id="cogsEvent" onchange="pickCogsEvent(this.value)"></select>
+      </div>
+      <div class="row">
+        <div class="field"><label>人數</label><input id="guests" type="number" min="1" value="6"></div>
+        <div class="field"><label>每位售價 USD</label><input id="price" type="number" min="0" value="175"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="field"><label>或直接填總餐費</label><input id="totalRev" type="number" min="0" placeholder="空白＝人數×單價"></div>
+        <div class="field"><label>目標食材成本 %</label><input id="cogsPct" type="number" min="1" max="80" step="0.5" value="30"></div>
+      </div>
+      <div id="eventMetrics" class="metrics"></div>
+      <div id="actualBox"></div>
+    </div>
+  </section>
+
+  <section id="tab-vendors" class="hidden">
+    <div class="card">
+      <h2>採購來源</h2>
+      <div class="search"><input id="vSearch" placeholder="搜尋商家、品項…" oninput="renderVendors()"></div>
+      <div class="chips" id="vChips"></div>
+      <div class="btn-row" style="margin:0 0 10px">
+        <a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/search/Asian+supermarket+near+Jersey+City+NJ">地圖：亞洲超市</a>
+        <a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=135+Greene+St+Jersey+City+NJ">導航 Whole Foods</a>
+        <a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=43+Edward+Hart+Dr+Jersey+City+NJ">導航 Yama</a>
+      </div>
+      <div id="vendorList"></div>
+    </div>
+  </section>
+</main>
+
+<nav class="nav">
+  <button class="on" data-tab="cal" onclick="switchTab('cal')"><span class="ico">▦</span>行程</button>
+  <button data-tab="menu" onclick="switchTab('menu')"><span class="ico">🍽</span>菜單</button>
+  <button data-tab="shop" onclick="switchTab('shop')"><span class="ico">☰</span>採購</button>
+  <button data-tab="cogs" onclick="switchTab('cogs')"><span class="ico">◎</span>成本</button>
+  <button data-tab="vendors" onclick="switchTab('vendors')"><span class="ico">⌂</span>商家</button>
+</nav>
+
+<div id="modal" class="modal-bg hidden" onclick="if(event.target.id==='modal')closeModal()"><div class="sheet" id="sheet"></div></div>
+
+<script>
+const $ = (s,el=document)=>el.querySelector(s);
+const $$ = (s,el=document)=>[...el.querySelectorAll(s)];
+const money = n => isFinite(n) ? Number(n).toLocaleString("en-US",{style:"currency",currency:"USD"}) : "—";
+const num = v => { const n=parseFloat(v); return isFinite(n)?n:0; };
+const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+const escAttr = s => esc(s).replace(/'/g,"&#39;");
+const uid = () => "id"+Math.random().toString(36).slice(2,9);
+
+const STORES = {
+  "Yama Seafood": { type:"批發取貨", addr:"43 Edward Hart Dr, Jersey City", maps:"https://maps.google.com/?q=43+Edward+Hart+Dr+Jersey+City+NJ+07305", web:"https://shop.yamaseafood.com/", phone:"201-433-3888" },
+  "Ligma Provisions": { type:"線上隔夜", addr:"Vernon, CA 出貨", maps:"https://ligmaprovisions.com/pages/wholesale", web:"https://ligmaprovisions.com/", phone:"" },
+  "Pat LaFrieda": { type:"批發", addr:"3701 Tonnelle Ave, North Bergen", maps:"https://maps.google.com/?q=3701+Tonnelle+Ave+North+Bergen+NJ", web:"https://www.lafrieda.com/", phone:"201-537-8200" },
+  "99 Ranch / 亞洲超市": { type:"當地超市", addr:"Jersey City 99 Ranch / Asian Food Market Rt 440", maps:"https://www.google.com/maps/search/99+Ranch+Market+Jersey+City", web:"", phone:"" },
+  "Asian Food Market": { type:"當地超市", addr:"701 State Rt 440, Jersey City, NJ 07304", maps:"https://maps.google.com/?q=701+State+RT+440+Jersey+City+NJ", web:"", phone:"201-333-8898" },
+  "Whole Foods JC": { type:"超市", addr:"135 Greene St, Jersey City, NJ 07311", maps:"https://maps.google.com/?q=135+Greene+St+Jersey+City+NJ", web:"https://www.wholefoodsmarket.com/stores/jerseycity", phone:"201-885-5388" },
+  "Restaurant Depot": { type:"會員倉", addr:"777 Secaucus Rd, Secaucus", maps:"https://maps.google.com/?q=777+Secaucus+Rd+Secaucus+NJ", web:"https://www.restaurantdepot.com/", phone:"201-601-4755" },
+  "Baldor": { type:"蔬果批發", addr:"155 Food Center Dr, Bronx", maps:"https://maps.google.com/?q=155+Food+Center+Dr+Bronx", web:"https://www.baldorfood.com/", phone:"718-860-9100" },
+  "Chefs' Warehouse": { type:"特色批發", addr:"NY Metro", maps:"https://www.chefswarehouse.com/", web:"https://www.chefswarehouse.com/", phone:"" },
+  "D'Artagnan": { type:"線上", addr:"NJ 出貨", maps:"https://www.dartagnan.com/", web:"https://www.dartagnan.com/", phone:"" },
+  "True World Foods": { type:"日料批發", addr:"NJ / NYC", maps:"https://www.google.com/maps/search/True+World+Foods+NJ", web:"https://www.trueworldfoods.com/", phone:"" }
+};
+
+const VENDORS = [
+  { name:"Yama Seafood", cat:["海鮮","日料","附近","批發"], type:"當地取貨 / 配送", addr:"43 Edward Hart Dr, Jersey City, NJ 07305", phone:"201-433-3888", web:"https://shop.yamaseafood.com/", maps:"https://maps.google.com/?q=43+Edward+Hart+Dr+Jersey+City+NJ+07305", note:"壽司級鮪、鰤、干貝、甜蝦、海膽。JC 倉庫可取貨，最低約 $50；當地配送最低約 $75，11am 截單。" },
+  { name:"Ligma Provisions", cat:["肉類","和牛","線上"], type:"全美隔夜", addr:"Vernon, CA", phone:"", web:"https://ligmaprovisions.com/", maps:"https://ligmaprovisions.com/pages/wholesale", note:"日本 A5、澳洲和牛、USDA Prime。可依廚房規格分切。info@LigmaProvisions.com" },
+  { name:"Pat LaFrieda", cat:["肉類","附近","批發"], type:"批發配送", addr:"3701 Tonnelle Ave, North Bergen, NJ", phone:"201-537-8200", web:"https://www.lafrieda.com/", maps:"https://maps.google.com/?q=3701+Tonnelle+Ave+North+Bergen+NJ", note:"短肋排、乾式熟成、客製漢堡餡。離 Hudson County 很近。" },
+  { name:"Whole Foods JC", cat:["超市","附近","蔬果","乳品"], type:"零售", addr:"135 Greene St, Jersey City, NJ 07311", phone:"201-885-5388", web:"https://www.wholefoodsmarket.com/stores/jerseycity", maps:"https://maps.google.com/?q=135+Greene+St+Jersey+City+NJ", note:"Downtown JC。有機蔬果、乳品、香草、雞蛋、奶油、一般蛋白。不適合壽司級魚。" },
+  { name:"99 Ranch / 亞洲超市", cat:["亞洲","附近","超市"], type:"零售", addr:"Jersey City 99 Ranch", phone:"", web:"", maps:"https://www.google.com/maps/search/99+Ranch+Market+Jersey+City", note:"青江、大白菜、香菜、蔥、薑、蒜、醬油、米酒、香油、豆腐、米、乾貨。比 Whole Foods 便宜且齊。" },
+  { name:"Asian Food Market", cat:["亞洲","附近","超市"], type:"零售", addr:"701 State Rt 440, Jersey City, NJ 07304", phone:"201-333-8898", web:"", maps:"https://maps.google.com/?q=701+State+RT+440+Jersey+City+NJ", note:"JC 本地亞洲超市，蔬果＋醬料＋部分肉。" },
+  { name:"Restaurant Depot", cat:["綜合","附近","批發"], type:"會員倉", addr:"777 Secaucus Rd, Secaucus, NJ 07094", phone:"201-601-4755", web:"https://www.restaurantdepot.com/", maps:"https://maps.google.com/?q=777+Secaucus+Rd+Secaucus+NJ", note:"需 EIN。奶油、蛋、油、乾貨、耗材一次補。" },
+  { name:"Baldor", cat:["蔬果","特色","批發"], type:"配送", addr:"155 Food Center Dr, Bronx, NY 10474", phone:"718-860-9100", web:"https://www.baldorfood.com/", maps:"https://maps.google.com/?q=155+Food+Center+Dr+Bronx", note:"microgreen、香草、稀有蔬菜、芹菜根、洋薊。" },
+  { name:"Chefs' Warehouse", cat:["特色","批發"], type:"配送", addr:"NY Metro", phone:"", web:"https://www.chefswarehouse.com/", maps:"https://www.chefswarehouse.com/", note:"魚子醬、松露、高純度巧克力、進口乳品。" },
+  { name:"D'Artagnan", cat:["肉類","特色","線上"], type:"線上", addr:"NJ 出貨", phone:"", web:"https://www.dartagnan.com/", maps:"https://www.dartagnan.com/", note:"鴨肝、有機禽、野味。" },
+  { name:"True World Foods", cat:["海鮮","日料","批發"], type:"日料批發", addr:"NJ / NYC", phone:"", web:"https://www.trueworldfoods.com/", maps:"https://www.google.com/maps/search/True+World+Foods+NJ", note:"日料常用：海苔、味醂、醬油、部分冷凍魚。" },
+  { name:"LP Seafood & Specialty", cat:["海鮮","特色"], type:"NYC 配送", addr:"New York, NY", phone:"", web:"https://www.lpssnyc.com/", maps:"https://www.lpssnyc.com/", note:"鮮切魚、活貝、煙燻魚、進口奶油。" }
+];
+
+const ROUTE_RULES = [
+  { v:"Yama Seafood", keys:["hamachi","yellowtail","鰤","tuna","maguro","toro","鮪","uni","海膽","amaebi","sweet shrimp","甜蝦","scallop","hotate","干貝","hirame","fluke","salmon sashimi","otoro","kampachi","kanpachi","sashimi","sushi grade","魚生"] },
+  { v:"Ligma Provisions", keys:["a5","wagyu","和牛","miyazaki","kobe"] },
+  { v:"Pat LaFrieda", keys:["short rib","shortrib","短肋","ribeye","prime","dry aged","dry-aged","牛肉","beef cheek","oxtail","牛尾","strip steak"] },
+  { v:"Chefs' Warehouse", keys:["caviar","魚子","osetra","kaluga","truffle","松露","foie","鴨肝","70%","valrhona","chocolate couverture"] },
+  { v:"D'Artagnan", keys:["duck","duck breast","鴨胸","quail whole","morel","羊肚菌","guinea"] },
+  { v:"99 Ranch / 亞洲超市", keys:["soy","醬油","mirin","味醂","sesame oil","香油","shaoxing","紹興","napa","大白菜","bok choy","青江","gai lan","芥蘭","scallion","蔥","ginger","薑","garlic","蒜","cilantro","香菜","tofu","豆腐","rice vinegar","米醋","gochujang","豆瓣","douban","花椒","sichuan","star anise","八角","rice","米 ","糯","shiso","紫蘇","yuzu kosho","柚子胡椒","daikon","白蘿蔔","蘿蔔","wood ear","木耳","shiitake","香菇","enoki","金針菇","dumpling","餃子皮","wonton","春捲","rice paper","米紙","fish sauce","魚露","oyster sauce","蠔油","kelp","昆布","kombu","bonito","柴魚","nori","海苔","miso","味噌","sake","清酒","ponzu"] },
+  { v:"Baldor", keys:["microgreen","micro green","celery root","celeriac","芹菜根","artichoke","洋薊","morel","chanterelle","herb","tarragon","chervil","mizuna"] },
+  { v:"Restaurant Depot", keys:["butter","奶油","heavy cream","鮮奶油","oil","油 ","flour","粉 ","sugar","糖 ","salt","鹽 ","egg carton","雞蛋箱","plastic","手套","foil"] },
+  { v:"Whole Foods JC", keys:["cream","yogurt","優格","milk","牛奶","lemon","檸檬","lime","萊姆","apple","蘋果","berry","草莓","blueberry","orange","橙","thyme","thyme","rosemary","迷迭香","parsley","歐芹","chive","chives","onion","洋蔥","shallot","紅蔥","potato","馬鈴薯","carrot","胡蘿蔔","olive oil","橄欖油","baguette","麵包","cream cheese"] }
+];
+
+function routeVendor(name, hint) {
+  if (hint && hint.trim()) return hint.trim();
+  const s = (name||"").toLowerCase();
+  for (const r of ROUTE_RULES) {
+    if (r.keys.some(k => s.includes(k.toLowerCase()))) return r.v;
+  }
+  return "Whole Foods JC";
+}
+
+const COUNT_UNITS = new Set(["pc","pcs","ea","each","顆","個","粒","隻","條","片","份","顆","枚"]);
+const BUNCH_UNITS = new Set(["bunch","bunches","把","束"]);
+const COUNT_NAMES = /apple|蘋果|pear|梨|lemon|檸檬|lime|萊姆|orange|橙|onion|洋蔥|shallot|紅蔥|egg|蛋|artichoke|洋薊|avocado|酪梨|mango|芒果|peach|桃|tomato|番茄|pepper|椒|cucumber|小黃瓜|head of|顆/;
+
+function normUnit(u) {
+  u = (u||"").toLowerCase().trim();
+  if (["ounce","ounces","ozs"].includes(u)) return "oz";
+  if (["pound","pounds","lbs","#"].includes(u)) return "lb";
+  if (["gram","grams","公克"].includes(u)) return "g";
+  if (["kg","公斤"].includes(u)) return "kg";
+  if (["ml","毫升"].includes(u)) return "ml";
+  if (["l","liter","公升"].includes(u)) return "l";
+  if (["tsp","teaspoon"].includes(u)) return "tsp";
+  if (["tbsp","tablespoon","大匙"].includes(u)) return "tbsp";
+  if (COUNT_UNITS.has(u)) return "pc";
+  if (BUNCH_UNITS.has(u)) return "bunch";
+  return u || "pc";
+}
+
+function isCount(name, unit) {
+  const u = normUnit(unit);
+  if (u==="pc" || u==="bunch") return true;
+  if (["oz","lb","g","kg","ml","l","tsp","tbsp","cup","pt","qt"].includes(u)) return false;
+  return COUNT_NAMES.test((name||"").toLowerCase());
+}
+
+function shopRound(name, qty, unit) {
+  const u = normUnit(unit);
+  qty = Math.max(0, num(qty));
+  if (isCount(name, u) || u==="pc") {
+    return { qty: Math.max(1, Math.ceil(qty - 1e-9)), unit: "顆／件", rawUnit:"pc" };
+  }
+  if (u==="bunch") {
+    return { qty: Math.max(1, Math.ceil(qty - 1e-9)), unit: "把", rawUnit:"bunch" };
+  }
+  if (u==="g") {
+    if (qty >= 450) return shopRound(name, qty/453.6, "lb");
+    return { qty: Math.max(50, Math.ceil(qty/25)*25), unit:"g", rawUnit:"g" };
+  }
+  if (u==="kg") return shopRound(name, qty*2.2046, "lb");
+  if (u==="oz") {
+    if (qty >= 12) return shopRound(name, qty/16, "lb");
+    return { qty: Math.max(1, Math.ceil(qty - 1e-9)), unit:"oz", rawUnit:"oz" };
+  }
+  if (u==="lb") {
+    if (qty < 0.4) return { qty: Math.max(4, Math.ceil(qty*16)), unit:"oz", rawUnit:"oz" };
+    const half = Math.ceil(qty * 2 - 1e-9) / 2;
+    return { qty: half, unit:"lb", rawUnit:"lb" };
+  }
+  if (u==="ml") {
+    if (qty >= 700) return { qty: Math.ceil(qty/750), unit:"瓶", rawUnit:"btl" };
+    return { qty: Math.max(50, Math.ceil(qty/50)*50), unit:"ml", rawUnit:"ml" };
+  }
+  if (u==="tsp" || u==="tbsp") {
+    return { qty: 1, unit:"一小罐／現有庫存", rawUnit:u, pantry:true };
+  }
+  return { qty: Math.max(1, Math.ceil(qty - 1e-9)), unit: u || "件", rawUnit:u||"pc" };
+}
+
+function fmtQty(q, unit) {
+  if (unit==="lb" && q % 1 !== 0) {
+    const whole = Math.floor(q);
+    const frac = q - whole;
+    const oz = Math.round(frac*16);
+    if (whole===0) return `${oz} oz`;
+    if (oz===0) return `${whole} lb`;
+    return `${whole} lb ${oz} oz`;
+  }
+  if (q % 1 === 0) return `${q} ${unit}`;
+  return `${q} ${unit}`;
+}
+
+const DEFAULT_RECIPES = [
+  { id:"r1", name:"Amuse · 蛋殼柑橘優格／甜蝦／魚子", course:"前菜",
+    ings:[
+      { n:"鵪鶉蛋", per:1, u:"pc", vendor:"Whole Foods JC" },
+      { n:"Amaebi 甜蝦", per:0.5, u:"oz", vendor:"Yama Seafood" },
+      { n:"魚子醬", per:0.15, u:"oz", vendor:"Chefs' Warehouse" },
+      { n:"希臘優格", per:0.75, u:"oz", vendor:"Whole Foods JC" },
+      { n:"檸檬", per:0.15, u:"pc", vendor:"Whole Foods JC" },
+      { n:"香蔥 chives", per:0.05, u:"bunch", vendor:"Whole Foods JC" }
+    ]},
+  { id:"r2", name:"冷盤 · Hamachi 蘿蔔香草油", course:"冷盤",
+    ings:[
+      { n:"Hamachi 鰤魚（壽司級）", per:1.75, u:"oz", vendor:"Yama Seafood" },
+      { n:"白蘿蔔 daikon", per:0.2, u:"pc", vendor:"99 Ranch / 亞洲超市" },
+      { n:"紫蘇葉 shiso", per:2, u:"pc", vendor:"99 Ranch / 亞洲超市" },
+      { n:"青草油用香草", per:0.1, u:"bunch", vendor:"Baldor" }
+    ]},
+  { id:"r3", name:"海鮮 · 干貝／芹菜根泥／紫蘇油", course:"海鮮",
+    ings:[
+      { n:"干貝 U10", per:2, u:"oz", vendor:"Yama Seafood" },
+      { n:"芹菜根 celeriac", per:0.25, u:"lb", vendor:"Baldor" },
+      { n:"無鹽奶油", per:0.4, u:"oz", vendor:"Whole Foods JC" },
+      { n:"紫蘇", per:0.1, u:"bunch", vendor:"99 Ranch / 亞洲超市" }
+    ]},
+  { id:"r4", name:"招牌 · 釀羊肚菌／蒜香褐奶油泡沫", course:"招牌",
+    ings:[
+      { n:"羊肚菌 morel", per:1, u:"oz", vendor:"Chefs' Warehouse" },
+      { n:"無鹽奶油", per:0.5, u:"oz", vendor:"Whole Foods JC" },
+      { n:"蒜頭", per:0.25, u:"pc", vendor:"99 Ranch / 亞洲超市" }
+    ]},
+  { id:"r5", name:"主菜 · 短肋排／炸洋薊", course:"主菜",
+    ings:[
+      { n:"Beef short rib", per:0.6, u:"lb", vendor:"Pat LaFrieda" },
+      { n:"洋薊 artichoke", per:1, u:"pc", vendor:"Baldor" },
+      { n:"牛肉骨／筋（醬汁）", per:0.25, u:"lb", vendor:"Pat LaFrieda" },
+      { n:"香蔥", per:0.05, u:"bunch", vendor:"Whole Foods JC" }
+    ]},
+  { id:"r6", name:"甜點 · 巧克力半球椰子慕斯／Piña", course:"甜點",
+    ings:[
+      { n:"70% 巧克力", per:1.2, u:"oz", vendor:"Chefs' Warehouse" },
+      { n:"椰奶", per:1.5, u:"oz", vendor:"99 Ranch / 亞洲超市" },
+      { n:"雞蛋", per:0.35, u:"pc", vendor:"Whole Foods JC" },
+      { n:"鳳梨", per:0.15, u:"pc", vendor:"99 Ranch / 亞洲超市" },
+      { n:"肉桂餅乾", per:0.3, u:"oz", vendor:"Whole Foods JC" }
+    ]}
+];
+
+const KEY = "rs-mise-v2";
+let state = {
+  recipes: JSON.parse(JSON.stringify(DEFAULT_RECIPES)),
+  events: [
+    { id:"e-demo", title:"6 人品嚐會", date:"2026-10-05", guests:6, where:"客人府上", price:175, notes:"5 道套餐", recipeIds:["r1","r2","r3","r4","r5","r6"], bought:{} }
+  ],
+  activeEvent: "e-demo",
+  cogsPct: 30,
+  totalRev: "",
+  vFilter: "全部",
+  guests: 6,
+  price: 175
+};
+
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) state = { ...state, ...JSON.parse(raw) };
+  } catch(e) {}
+  if (!state.events.length) {
+    state.events = [{ id:"e-demo", title:"6 人品嚐會", date:"2026-10-05", guests:6, where:"客人府上", price:175, notes:"", recipeIds:["r1","r2","r3","r4","r5","r6"], bought:{} }];
+    state.activeEvent = "e-demo";
+  }
+}
+function save() {
+  localStorage.setItem(KEY, JSON.stringify(state));
+}
+
+function evById(id){ return state.events.find(e=>e.id===id); }
+function recById(id){ return state.recipes.find(r=>r.id===id); }
+function activeEv(){ return evById(state.activeEvent) || state.events[0]; }
+
+function fmtDate(iso) {
+  if (!iso) return "未定日期";
+  const [y,m,d] = iso.split("-").map(Number);
+  const dt = new Date(y, m-1, d);
+  const w = "日一二三四五六"[dt.getDay()];
+  return `${m}/${d}（週${w}）`;
+}
+
+function switchTab(id) {
+  ["cal","menu","shop","cogs","vendors"].forEach(t=>{
+    $("#tab-"+t).classList.toggle("hidden", t!==id);
+    $$(`.nav button[data-tab="${t}"]`).forEach(b=>b.classList.toggle("on", t===id));
+  });
+  if (id==="cal") renderCal();
+  if (id==="menu") renderRecipes();
+  if (id==="shop") renderShop();
+  if (id==="cogs") renderCogs();
+  if (id==="vendors") renderVendors();
+}
+
+function renderCal() {
+  const list = [...state.events].sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+  if (!list.length) { $("#calList").innerHTML = `<div class="empty">還沒有行程。先加一場 10/5 的派對。</div>`; return; }
+  const today = new Date().toISOString().slice(0,10);
+  $("#calList").innerHTML = list.map(e=>{
+    const recs = (e.recipeIds||[]).map(recById).filter(Boolean);
+    const past = e.date && e.date < today;
+    return `<article class="event" style="opacity:${past?.6:1}">
+      <div class="split">
+        <div>
+          <div class="when">${fmtDate(e.date)} · ${e.guests} 位</div>
+          <h3>${esc(e.title||"未命名活動")}</h3>
+          <div class="muted">${esc(e.where||"")} ${e.price? "· $"+e.price+"/位":""}</div>
+        </div>
+        <span class="pill">${recs.length} 道菜</span>
+      </div>
+      <div class="muted" style="margin-top:6px">${recs.map(r=>r.name.split("·")[0].trim()).join("  /  ")||"尚未套菜單"}</div>
+      <div class="btn-row">
+        <button class="btn gold" onclick="openEvent('${e.id}')">打開</button>
+        <button class="btn" onclick="state.activeEvent='${e.id}';save();switchTab('shop');buildShop()">出採購單</button>
+        <button class="btn" onclick="openEventForm('${e.id}')">編輯</button>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+function openEvent(id) {
+  state.activeEvent = id;
+  save();
+  const e = evById(id);
+  const recs = (e.recipeIds||[]).map(recById).filter(Boolean);
+  const shop = buildShopItems(e);
+  const stores = [...new Set(shop.map(s=>s.vendor))];
+  $("#sheet").innerHTML = `
+    <div class="when">${fmtDate(e.date)}</div>
+    <h2 class="serif" style="margin:4px 0 8px;color:var(--gold2)">${esc(e.title)}</h2>
+    <p class="muted">${e.guests} 位 · ${esc(e.where||"")} · ${e.price?money(e.price)+"/位 · 營收 "+money(e.guests*e.price):""}</p>
+    ${e.notes?`<p class="hint">${esc(e.notes)}</p>`:""}
+    <h3 class="serif" style="color:var(--gold2);margin:14px 0 8px">本場菜單</h3>
+    ${recs.map(r=>`<div class="recipe"><b>${esc(r.name)}</b><div class="muted">${(r.ings||[]).map(i=>i.n).join(" · ")}</div></div>`).join("") || `<div class="empty">還沒套食譜</div>`}
+    <div class="btn-row">
+      <button class="btn" onclick="openAttach('${e.id}')">套用／增減菜品</button>
+      <button class="btn" onclick="openPaste('${e.id}')">貼上食譜文字</button>
+    </div>
+    <p class="hint" style="margin-top:12px">採購會去 ${stores.length} 個地方：${stores.map(esc).join("、")||"—"}</p>
+    <div class="btn-row">
+      <button class="btn gold" onclick="state.activeEvent='${e.id}';closeModal();switchTab('shop');buildShop()">生成採購單</button>
+      <button class="btn" onclick="closeModal();switchTab('cogs')">看成本</button>
+      <button class="btn ghost" onclick="closeModal()">關閉</button>
+    </div>
+  `;
+  $("#modal").classList.remove("hidden");
+}
+
+function openEventForm(id) {
+  const e = id ? evById(id) : { id:uid(), title:"", date:"", guests:6, where:"", price:175, notes:"", recipeIds:[], bought:{} };
+  const draft = JSON.parse(JSON.stringify(e));
+  $("#sheet").innerHTML = `
+    <h2 class="serif" style="margin:0 0 12px;color:var(--gold2)">${id?"編輯活動":"新活動"}</h2>
+    <div class="field"><label>名稱</label><input id="et" value="${escAttr(draft.title)}" placeholder="例：10/5 六人派對"></div>
+    <div class="row" style="margin-top:8px">
+      <div class="field"><label>日期</label><input id="ed" type="date" value="${escAttr(draft.date||"")}"></div>
+      <div class="field"><label>人數</label><input id="eg" type="number" min="1" value="${draft.guests||6}"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="field"><label>地點</label><input id="ew" value="${escAttr(draft.where||"")}" placeholder="客人地址／區域"></div>
+      <div class="field"><label>每位 USD</label><input id="ep" type="number" value="${draft.price||175}"></div>
+    </div>
+    <div class="field" style="margin-top:8px"><label>備註</label><textarea id="en" style="min-height:70px">${esc(draft.notes||"")}</textarea></div>
+    <div class="btn-row">
+      <button class="btn gold" onclick="saveEvent('${draft.id}', ${id?true:false})">儲存</button>
+      ${id?`<button class="btn" onclick="deleteEvent('${draft.id}')">刪除活動</button>`:""}
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+    </div>
+  `;
+  $("#modal").classList.remove("hidden");
+}
+function saveEvent(id, exists) {
+  const obj = {
+    id, title: $("#et").value.trim() || "未命名活動",
+    date: $("#ed").value, guests: Math.max(1, num($("#eg").value)),
+    where: $("#ew").value.trim(), price: num($("#ep").value),
+    notes: $("#en").value.trim(),
+    recipeIds: exists ? (evById(id)?.recipeIds || []) : state.recipes.map(r=>r.id),
+    bought: exists ? (evById(id)?.bought || {}) : {}
+  };
+  if (!exists && !obj.date) {
+    const t = new Date(); t.setMonth(t.getMonth()+1); obj.date = t.toISOString().slice(0,10);
+  }
+  const i = state.events.findIndex(x=>x.id===id);
+  if (i>=0) state.events[i] = { ...state.events[i], ...obj };
+  else state.events.push(obj);
+  state.activeEvent = id;
+  state.guests = obj.guests;
+  state.price = obj.price || 175;
+  save(); closeModal(); renderCal();
+}
+function deleteEvent(id) {
+  if (!confirm("刪除這場活動？")) return;
+  state.events = state.events.filter(e=>e.id!==id);
+  if (state.activeEvent===id) state.activeEvent = state.events[0]?.id || "";
+  save(); closeModal(); renderCal();
+}
+
+function openAttach(eid) {
+  const e = evById(eid);
+  $("#sheet").innerHTML = `
+    <h2 class="serif" style="margin:0 0 10px;color:var(--gold2)">套用菜品</h2>
+    <p class="hint">勾選本場要做的菜。可先在「菜單」庫新增或貼上整套食譜。</p>
+    ${state.recipes.map(r=>`
+      <label class="recipe" style="display:flex;gap:10px;align-items:flex-start">
+        <input type="checkbox" class="atch" value="${r.id}" ${(e.recipeIds||[]).includes(r.id)?"checked":""} style="margin-top:4px">
+        <div><b>${esc(r.name)}</b><div class="muted">${esc(r.course||"")} · ${(r.ings||[]).length} 項食材</div></div>
+      </label>
+    `).join("") || `<div class="empty">食譜庫是空的</div>`}
+    <div class="btn-row">
+      <button class="btn gold" onclick="commitAttach('${eid}')">套用</button>
+      <button class="btn ghost" onclick="openEvent('${eid}')">返回</button>
+    </div>
+  `;
+}
+function commitAttach(eid) {
+  const ids = $$(".atch").filter(x=>x.checked).map(x=>x.value);
+  evById(eid).recipeIds = ids;
+  save(); openEvent(eid);
+}
+
+function renderRecipes() {
+  $("#recipeList").innerHTML = state.recipes.map(r=>`
+    <article class="recipe">
+      <div class="split">
+        <div>
+          <span class="pill">${esc(r.course||"菜")}</span>
+          <h3 style="margin:6px 0 4px;font-size:16px;color:var(--gold2)">${esc(r.name)}</h3>
+          <div class="muted">${(r.ings||[]).map(i=>`${i.n} ${i.per} ${i.u}/人`).join(" · ")}</div>
+        </div>
+        <button class="btn" onclick="openRecipeForm('${r.id}')">編輯</button>
+      </div>
+    </article>
+  `).join("") || `<div class="empty">還沒有食譜。</div>`;
+}
+
+function openRecipeForm(id) {
+  const r = id ? recById(id) : { id:uid(), name:"", course:"其他", ings:[{n:"",per:1,u:"pc",vendor:""}] };
+  window.draftR = JSON.parse(JSON.stringify(r));
+  const paint = () => {
+    $("#ingBox").innerHTML = window.draftR.ings.map((i,idx)=>`
+      <div class="recipe">
+        <input placeholder="食材名" value="${escAttr(i.n)}" oninput="draftR.ings[${idx}].n=this.value">
+        <div class="row" style="margin-top:6px">
+          <div class="field"><label>每位用量</label><input type="number" step="0.01" value="${i.per}" oninput="draftR.ings[${idx}].per=num(this.value)"></div>
+          <div class="field"><label>單位</label>
+            <select onchange="draftR.ings[${idx}].u=this.value">
+              ${["pc","oz","lb","bunch","g","ml"].map(u=>`<option ${i.u===u?"selected":""}>${u}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+        <div class="field" style="margin-top:6px"><label>指定商家（可空，系統會判斷）</label>
+          <input list="storelist" value="${escAttr(i.vendor||"")}" oninput="draftR.ings[${idx}].vendor=this.value">
+        </div>
+        <button class="danger" onclick="draftR.ings.splice(${idx},1);openRecipeForm.__p()">刪此列</button>
+      </div>
+    `).join("");
+  };
+  openRecipeForm.__p = () => { if (!window.draftR.ings.length) window.draftR.ings.push({n:"",per:1,u:"pc",vendor:""}); paint(); };
+  $("#sheet").innerHTML = `
+    <h2 class="serif" style="margin:0 0 10px;color:var(--gold2)">${id?"編輯食譜":"新食譜"}</h2>
+    <div class="field"><label>菜名</label><input id="rn" value="${escAttr(r.name)}"></div>
+    <div class="field" style="margin-top:8px"><label>菜道</label>
+      <select id="rc">${["前菜","冷盤","海鮮","招牌","主菜","甜點","其他"].map(c=>`<option ${r.course===c?"selected":""}>${c}</option>`).join("")}</select>
+    </div>
+    <p class="hint">用量是「一位客人」的量。6 人派對會自動 ×6 再進位。</p>
+    <datalist id="storelist">${Object.keys(STORES).map(s=>`<option value="${escAttr(s)}">`).join("")}</datalist>
+    <div id="ingBox"></div>
+    <div class="btn-row">
+      <button class="btn" onclick="draftR.ings.push({n:'',per:1,u:'oz',vendor:''});openRecipeForm.__p()">＋ 食材</button>
+      <button class="btn gold" onclick="commitRecipe('${r.id}')">儲存</button>
+      ${id?`<button class="btn" onclick="deleteRecipe('${r.id}')">刪除食譜</button>`:""}
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+    </div>
+  `;
+  $("#modal").classList.remove("hidden");
+  paint();
+}
+function commitRecipe(id) {
+  const rec = window.draftR;
+  rec.name = $("#rn").value.trim() || "未命名";
+  rec.course = $("#rc").value;
+  rec.ings = rec.ings.filter(i=>i.n);
+  rec.ings.forEach(i => { if (!i.vendor) i.vendor = routeVendor(i.n,""); });
+  const i = state.recipes.findIndex(x=>x.id===id);
+  if (i>=0) state.recipes[i] = rec; else state.recipes.push(rec);
+  save(); closeModal(); renderRecipes();
+}
+function deleteRecipe(id) {
+  if (!confirm("刪除這份食譜？")) return;
+  state.recipes = state.recipes.filter(r=>r.id!==id);
+  state.events.forEach(e => e.recipeIds = (e.recipeIds||[]).filter(x=>x!==id));
+  save(); closeModal(); renderRecipes();
+}
+
+function openPaste(eid) {
+  $("#sheet").innerHTML = `
+    <h2 class="serif" style="margin:0 0 8px;color:var(--gold2)">貼上整套菜單</h2>
+    <p class="hint">一行一個食材，可用：<br>菜名以「# 冷盤 Hamachi」或「冷盤：」開頭<br>食材例：<code>Hamachi 2 oz</code>　<code>蘋果 1 顆</code>　<code>short rib 8 oz /人</code><br>不寫／人就當作「每位客人」的量。</p>
+    <textarea id="pasteBox" placeholder="# Amuse&#10;鵪鶉蛋 1 pc&#10;甜蝦 0.5 oz&#10;&#10;# 冷盤&#10;Hamachi 1.75 oz&#10;白蘿蔔 0.2 顆"></textarea>
+    <div class="btn-row">
+      <button class="btn gold" onclick="parsePaste('${eid||""}')">解析並加入食譜庫</button>
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+    </div>
+  `;
+  $("#modal").classList.remove("hidden");
+}
+
+function parsePaste(eid) {
+  const text = $("#pasteBox").value || "";
+  const lines = text.split(/\n/).map(s=>s.trim()).filter(s=>s && !s.startsWith("//"));
+  const courses = [];
+  let cur = { name:"貼上的菜", course:"其他", ings:[] };
+  const startNew = (name, course) => {
+    if (cur.ings.length || (cur.name && cur.name!=="貼上的菜")) courses.push(cur);
+    cur = { name: name || "未命名", course: course || "其他", ings:[] };
+  };
+  const header = /^(?:#+\s*)?(前菜|冷盤|海鮮|招牌|主菜|甜點|amuse|appetizer|crudo|entree|dessert)?\s*[:：-]?\s*(.+)$/i;
+  const ingRe = /^[-*•]?\s*(.+?)\s+([0-9]+(?:\.[0-9]+)?)\s*(oz|lb|lbs|g|kg|ml|pc|pcs|ea|顆|個|粒|隻|條|片|把|束|bunch|tsp|tbsp)?\s*(?:\/\s*(?:人|guest|pp))?$/i;
+  const ingRe2 = /^[-*•]?\s*([0-9]+(?:\.[0-9]+)?)\s*(oz|lb|g|kg|ml|pc|顆|個|把|bunch)?\s+(.+)$/i;
+
+  for (const line of lines) {
+    if (/^#/.test(line) || /[:：]\s*$/.test(line) || /^(前菜|冷盤|海鮮|招牌|主菜|甜點)\b/.test(line)) {
+      let name = line.replace(/^#+\s*/,"").replace(/[:：]\s*$/,"").trim();
+      let course = "其他";
+      const m = name.match(/^(前菜|冷盤|海鮮|招牌|主菜|甜點)\s*/);
+      if (m) { course = m[1]; name = name.slice(m[0].length).trim() || m[1]; }
+      startNew(name, course);
+      continue;
+    }
+    let m = line.match(ingRe);
+    if (m) {
+      cur.ings.push({ n:m[1].trim(), per:num(m[2]), u:normUnit(m[3]||"pc"), vendor:"" });
+      continue;
+    }
+    m = line.match(ingRe2);
+    if (m) {
+      cur.ings.push({ n:m[3].trim(), per:num(m[1]), u:normUnit(m[2]||"pc"), vendor:"" });
+      continue;
+    }
+    if (line.length < 40) cur.ings.push({ n:line.replace(/^[-*•]\s*/,""), per:1, u:"pc", vendor:"" });
+  }
+  if (cur.ings.length) courses.push(cur);
+
+  if (!courses.length) { alert("沒解析到食材。請用「名稱 數量 單位」格式。"); return; }
+  const newIds = [];
+  courses.forEach(c => {
+    c.id = uid();
+    c.ings.forEach(i => i.vendor = routeVendor(i.n, i.vendor));
+    state.recipes.push(c);
+    newIds.push(c.id);
+  });
+  if (eid) {
+    const e = evById(eid);
+    e.recipeIds = [...(e.recipeIds||[]), ...newIds];
+  }
+  save();
+  closeModal();
+  switchTab("menu");
+  renderRecipes();
+  alert(`已加入 ${courses.length} 道菜、共 ${courses.reduce((s,c)=>s+c.ings.length,0)} 項食材。`);
+}
+
+function buildShopItems(e) {
+  const map = new Map();
+  (e.recipeIds||[]).forEach(rid => {
+    const r = recById(rid); if (!r) return;
+    (r.ings||[]).forEach(i => {
+      const vendor = routeVendor(i.n, i.vendor);
+      const raw = num(i.per) * (e.guests||1);
+      const key = (i.n+"|"+vendor).toLowerCase();
+      if (!map.has(key)) map.set(key, { n:i.n, vendor, raw:0, u:i.u, dishes:[r.name] });
+      const it = map.get(key);
+      it.raw += raw;
+      if (!it.dishes.includes(r.name)) it.dishes.push(r.name);
+    });
+  });
+  return [...map.values()].map(it => {
+    const rnd = shopRound(it.n, it.raw, it.u);
+    return { ...it, ...rnd, label: fmtQty(rnd.qty, rnd.unit) };
+  }).sort((a,b)=>a.vendor.localeCompare(b.vendor) || a.n.localeCompare(b.n));
+}
+
+function buildShop() {
+  const e = activeEv();
+  if (!e) { alert("先建一場活動"); return; }
+  e.shopStamp = Date.now();
+  save();
+  renderShop();
+}
+
+function renderShop() {
+  const sel = $("#shopEvent");
+  sel.innerHTML = state.events.map(e=>`<option value="${e.id}" ${e.id===state.activeEvent?"selected":""}>${fmtDate(e.date)} · ${esc(e.title)} · ${e.guests}位</option>`).join("");
+  const e = activeEv();
+  if (!e) { $("#shopList").innerHTML = `<div class="empty">沒有活動</div>`; return; }
+  const items = buildShopItems(e);
+  const stores = {};
+  items.forEach(i => (stores[i.vendor] ||= []).push(i));
+  $("#shopHint").textContent = `${fmtDate(e.date)}｜${e.guests} 位｜${(e.recipeIds||[]).length} 道菜｜數量已進位，計數類只出現整數。`;
+  if (!items.length) {
+    $("#shopList").innerHTML = `<div class="empty">這場還沒套菜單。回行程打開活動，套用菜品或貼上食譜。</div>`;
+    return;
+  }
+  e.bought = e.bought || {};
+  $("#shopList").innerHTML = Object.entries(stores).map(([vendor, list]) => {
+    const info = STORES[vendor] || {};
+    return `<div class="event">
+      <div class="split">
+        <div>
+          <h3 style="margin:0">${esc(vendor)}</h3>
+          <div class="muted">${esc(info.type||"")}${info.addr?" · "+info.addr:""}</div>
+        </div>
+        <span class="pill">${list.length} 項</span>
+      </div>
+      <div class="links">
+        ${info.maps?`<a class="btn" target="_blank" rel="noopener" href="${info.maps}">地圖／導航</a>`:""}
+        ${info.web?`<a class="btn" target="_blank" rel="noopener" href="${info.web}">官網</a>`:""}
+        ${info.phone?`<a class="btn" href="tel:${info.phone.replace(/\D/g,"")}">打電話</a>`:""}
+      </div>
+      ${list.map(i=>{
+        const key = (i.n+"|"+i.vendor).toLowerCase();
+        const done = !!e.bought[key];
+        return `<div class="shop-item">
+          <input class="check" type="checkbox" ${done?"checked":""} onchange="toggleBought('${e.id}','${escAttr(key)}',this.checked)">
+          <div style="${done?"opacity:.45;text-decoration:line-through":""}">
+            <b>${esc(i.n)}</b>
+            <div class="vendor-name">${esc(i.dishes.map(d=>d.split("·")[0].trim()).join("、"))}</div>
+          </div>
+          <div class="qty-badge">${esc(i.label)}</div>
+        </div>`;
+      }).join("")}
+    </div>`;
+  }).join("");
+}
+function toggleBought(eid, key, val) {
+  const e = evById(eid); e.bought = e.bought || {}; e.bought[key] = val; save();
+}
+function clearBought() {
+  const e = activeEv(); if (!e) return;
+  e.bought = {}; save(); renderShop();
+}
+
+function pickCogsEvent(id) {
+  state.activeEvent = id;
+  const e = evById(id);
+  if (e) { state.guests = e.guests; state.price = e.price || 175; $("#guests").value = state.guests; $("#price").value = state.price; }
+  save(); renderCogs();
+}
+function revenue() {
+  if (num(state.totalRev)>0) return num(state.totalRev);
+  return num(state.guests) * num(state.price);
+}
+function roughFoodCost(e) {
+  const items = buildShopItems(e||activeEv()||{guests:state.guests,recipeIds:[]});
+  return items.length * 0;
+}
+function renderCogs() {
+  const sel = $("#cogsEvent");
+  sel.innerHTML = state.events.map(e=>`<option value="${e.id}" ${e.id===state.activeEvent?"selected":""}>${fmtDate(e.date)} · ${esc(e.title)}</option>`).join("");
+  $("#guests").value = state.guests;
+  $("#price").value = state.price;
+  $("#totalRev").value = state.totalRev || "";
+  $("#cogsPct").value = state.cogsPct;
+  const e = activeEv();
+  const rev = revenue();
+  const tgt = rev * (state.cogsPct/100);
+  const perG = state.guests ? tgt/state.guests : 0;
+  const nDishes = (e?.recipeIds||[]).length || 5;
+  $("#eventMetrics").innerHTML = `
+    <div class="metric wide"><span>總餐費</span><b>${money(rev)}</b></div>
+    <div class="metric"><span>目標食材 ${state.cogsPct}%</span><b>${money(tgt)}</b></div>
+    <div class="metric"><span>剩餘（工時／利潤）</span><b>${money(rev-tgt)}</b></div>
+    <div class="metric"><span>每位食材預算</span><b>${money(perG)}</b></div>
+    <div class="metric"><span>每道平均預算</span><b>${money(nDishes?tgt/nDishes:0)}</b></div>
+  `;
+  $("#actualBox").innerHTML = `<p class="foot-note">${e?fmtDate(e.date)+" · "+e.title+" · "+e.guests+" 位":""}。食材進價可在舊版菜品成本裡細算；這裡先鎖採購上限，避免現場超支。</p>`;
+}
+
+const CATS = ["全部","附近","海鮮","肉類","和牛","蔬果","日料","亞洲","超市","線上","批發","特色"];
+function renderVendors() {
+  $("#vChips").innerHTML = CATS.map(c=>`<button class="chip ${state.vFilter===c?"on":""}" onclick="state.vFilter='${c}';renderVendors()">${c}</button>`).join("");
+  const q = ($("#vSearch").value||"").toLowerCase();
+  const list = VENDORS.filter(v=>{
+    const hay = (v.name+" "+v.note+" "+v.addr+" "+v.cat.join(" ")).toLowerCase();
+    if (q && !hay.includes(q)) return false;
+    if (state.vFilter!=="全部" && !v.cat.includes(state.vFilter)) return false;
+    return true;
+  });
+  $("#vendorList").innerHTML = list.map(v=>`
+    <article class="card">
+      <div class="split"><h3 class="serif" style="margin:0;color:var(--gold2)">${esc(v.name)}</h3><span class="pill">${esc(v.type)}</span></div>
+      <div class="tags" style="margin:8px 0">${v.cat.map(t=>`<span class="tag">${t}</span>`).join("")}</div>
+      <p class="muted">${v.addr? "📍 "+esc(v.addr):""}${v.phone?"<br>☎ "+esc(v.phone):""}</p>
+      <p class="hint">${esc(v.note)}</p>
+      <div class="links">
+        ${v.web?`<a class="btn gold" target="_blank" rel="noopener" href="${v.web}">官網</a>`:""}
+        ${v.maps?`<a class="btn" target="_blank" rel="noopener" href="${v.maps}">地圖</a>`:""}
+        ${v.phone?`<a class="btn" href="tel:${v.phone.replace(/\D/g,"")}">打電話</a>`:""}
+      </div>
+    </article>
+  `).join("");
+}
+
+function closeModal(){ $("#modal").classList.add("hidden"); }
+
+["guests","price","totalRev","cogsPct"].forEach(id=>{
+  document.addEventListener("input", ev => {
+    if (ev.target && ev.target.id===id) {
+      state[id] = ev.target.id==="totalRev" ? ev.target.value : num(ev.target.value);
+      const e = activeEv();
+      if (e && (id==="guests"||id==="price")) {
+        if (id==="guests") e.guests = state.guests;
+        if (id==="price") e.price = state.price;
+      }
+      save(); renderCogs();
+    }
+  });
+});
+
+load();
+renderCal();
+renderRecipes();
+renderShop();
+renderCogs();
+renderVendors();
+</script>
+</body>
+</html>
