@@ -791,7 +791,7 @@ async function scanPdfFile(file, eid, returnText) {
     for (let p=1; p<=n; p++) {
       const page = await pdf.getPage(p);
       const tc = await page.getTextContent();
-      const t = (tc.items||[]).map(i=>i.str).join(" ").replace(/\s+/g," ").trim();
+      const t = pdfItemsToText(tc.items);
       if (t) text += t + "\n";
       const st = $("#scanStat"); if (st) st.textContent = `讀第 ${p}/${n} 頁文字…`;
       const bar = $("#scanBar"); if (bar) bar.style.width = Math.round(p/n*50) + "%";
@@ -932,10 +932,30 @@ function cleanIngName(n) {
     .replace(/\s+/g, " ")
     .trim();
 }
+function pdfItemsToText(items) {
+  const rows = (items||[]).map(i => {
+    const tr = i.transform || [1,0,0,1,0,0];
+    return { str: String(i.str||""), x: tr[4], y: Math.round((tr[5]||0)*2)/2 };
+  }).filter(i => i.str.trim());
+  rows.sort((a,b) => b.y - a.y || a.x - b.x);
+  const lines = [];
+  let y = null, buf = [];
+  for (const it of rows) {
+    if (y!=null && Math.abs(it.y-y)>3) {
+      lines.push(buf.join(" ").replace(/\s+/g," ").trim());
+      buf = [it.str]; y = it.y;
+    } else {
+      buf.push(it.str);
+      if (y==null) y = it.y;
+    }
+  }
+  if (buf.length) lines.push(buf.join(" ").replace(/\s+/g," ").trim());
+  return lines.filter(Boolean).join("\n");
+}
 function isolateIngredientText(text) {
   let t = String(text||"");
-  t = t.split(/出餐\s*P\s*I\s*C\s*K\s*U\s*P|出餐 PICKUP|\bPICKUP\b|擺盤|質控\s*CCP|保存\s*\/\s*HOLD|成本備註|主廚備註/i)[0];
-  const cut = t.search(/備料\s*MISE|\bMISE\b|項目\s+份量|組件/);
+  t = t.split(/\n\s*出餐\s*PICKUP|\n\s*P\s*I\s*C\s*K\s*U\s*P|\n\s*擺盤\s*$|\n\s*擺盤\n|\n\s*質控|\n\s*成本備註|\n\s*主廚備註/im)[0];
+  const cut = t.search(/備料\s*MISE|\nMISE\b|項目\s+份量|\n組件\n/);
   if (cut >= 0) t = t.slice(cut);
   return t;
 }
@@ -980,8 +1000,13 @@ function extractIngFromLine(line) {
   return { n: cleanIngName(s), weak:true };
 }
 
-function parseRecipesFromText(text) {
-  const isolated = isolateIngredientText(text);
+function parseRecipesFromText(text, loose) {
+  let isolated = loose ? String(text||"") : isolateIngredientText(text);
+  if (isolated.length>80 && (isolated.match(/\n/g)||[]).length<4) {
+    isolated = isolated
+      .replace(/(\d+(?:\.\d+)?\s*(?:g|ml|oz|lb|pc|pcs|顆|個))\s+/gi, "$1\n")
+      .replace(/(絹豆腐|杏仁粉|乾瑤柱|葡萄籽油|白胡椒|魚子|柑橘|煙燻木屑|微綠苗|白豆腐乳|豆腐乳汁|米醋|琼脂|黃原膠|北海道|細鹽)/g, "\n$1");
+  }
   let serves = 1;
   const sm = String(text).match(/(?:serves|yield|份量|產量|plates?|covers?|供)\s*[:：]?\s*(\d+)/i)
           || String(text).match(/(\d+)\s*(?:plates?|covers?|人份)/i);
@@ -1028,6 +1053,7 @@ function parseRecipesFromText(text) {
   cur.ings = cur.ings.filter(i => i.n && i.per!=null);
   cur.ings.forEach(i => { if (!i.u) i.u = "pc"; i.vendor = routeVendor(i.n, i.vendor); });
   if (cur.ings.length) courses.push(cur);
+  if (!courses.length && !loose && String(text||"").length>80) return parseRecipesFromText(text, true);
   return { courses, serves, raw: text };
 }
 
